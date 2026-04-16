@@ -1,16 +1,19 @@
-# React + Vite
+# Car-Dealership Frontend
+Welcome to the frontend repository for the Car-Dealership project. This application enables users to browse cars, manage watchlists, negotiate with dealers, and make seamless payments.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+### Features
+- Secure Messaging: Enables negotiation and chat with dealers.
+- Comprehensive Car Viewing: Browse, manage watchlists, explore car details.
+- Smooth Payments: Facilitates seamless transactions.
+- Secure Authentication: Ensures user safety with JSON Web Tokens.
+### Technologies
+- Frontend: React, Formik, React-Toastify
+- Backend: Node, Express
+- Authentication: JWT (Access and Refresh Tokens)
+- Database: MongoDB
+- State Management: Redux
+- Others: Material UI, Socket.IO, Razorpay, ImageKit, Tailwind CSS
+### Backend
+The backend for this project is at another repo : [Visit Backend](https://github.com/Priyanshu1112/Car-dealership-backend)
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Feel free to contribute and open issues if you encounter any problems!
