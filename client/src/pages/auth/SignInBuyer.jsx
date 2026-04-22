@@ -13,7 +13,9 @@ import {
 
 const validationSchema = Yup.object().shape({
   email: Yup.string().required("Email is required"),
-  password: Yup.string().required("Password is required"),
+  password: Yup.string()
+    .min(8, "Password must be at least 8 characters")
+    .required("Password is required"),
 });
 
 const SignInBuyer = () => {
@@ -97,8 +99,8 @@ const SignInBuyer = () => {
                       type="button"
                       onClick={() => {
                         setValues({
-                          email: "buyer@gmail.com",
-                          password: "buyer123",
+                          email: "buyer@example.com",
+                          password: "Password123!",
                         });
                       }}
                       className="inline-flex mb-3 w-full items-center justify-center rounded-md bg-black px-3.5 py-2.5 font-semibold leading-7 text-white hover:bg-black/80"

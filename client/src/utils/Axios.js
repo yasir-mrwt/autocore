@@ -2,17 +2,15 @@ import axios from "axios";
 import { getAccessToken, getRefreshToken, getUserType } from "./Token";
 
 const axiosInstance = axios.create({
-  // baseURL: "http://localhost:3001/",
-  // baseURL: "https://car-dealership-backend.vercel.app/",
-  // baseURL: "https://car-dealership-backend.onrender.com/",
-  baseURL: "https://car-dealership-backend-production.up.railway.app/",
+  baseURL: import.meta.env.VITE_LEGACY_API_BASE_URL || "http://localhost:8000/",
 });
 
 axiosInstance.interceptors.request.use(
   (config) => {
-    config.headers["Authorization"] = `Bearer ${getAccessToken()}`;
-    config.headers["Refresh-Token"] = getRefreshToken();
-    config.headers["User-Type"] = getUserType();
+    const role = config.headers?.["User-Type"] === "Admin" ? "Admin" : "Buyer";
+    config.headers["Authorization"] = `Bearer ${getAccessToken(role)}`;
+    config.headers["Refresh-Token"] = getRefreshToken(role);
+    config.headers["User-Type"] = getUserType(role);
     return config;
   },
   (error) => {

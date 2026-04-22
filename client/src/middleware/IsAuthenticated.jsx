@@ -1,20 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { notifyInfo } from "../utils/Toast";
 
-const IsAuthenticated = ({ children }) => {
-  const { isAuthenticated } = useSelector((state) => state.app);
+const IsAuthenticated = ({ children, requiredUserType = "Buyer" }) => {
+  const { roleState, authChecked } = useSelector((state) => ({
+    roleState: requiredUserType === "Admin" ? state.app.admin : state.app.customer,
+    authChecked: state.app.authChecked,
+  }));
   const navigate = useNavigate();
-  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    setIsMounted(true);
-    if (!isAuthenticated && isMounted) {
+    if (authChecked && !roleState?.isAuthenticated) {
       notifyInfo("Login to access page!");
-      navigate("/sign-in");
+      navigate(requiredUserType === "Admin" ? "/admin/login" : "/sign-in", {
+        replace: true,
+      });
     }
-  }, [isAuthenticated, isMounted]);
+  }, [authChecked, navigate, requiredUserType, roleState?.isAuthenticated]);
+
+  if (!authChecked || !roleState?.isAuthenticated) return null;
 
   return <>{children}</>;
 };

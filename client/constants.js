@@ -1,38 +1,49 @@
 export const NavItems = [
   {
-    title: "Shop Now",
-    path: "/cars",
+    title: "Shop Parts",
+    path: "/shop?page=1",
   },
-  {
-    title: "Parts",
-    path: "/cars",
-  },
-  //   {
-  //     title: "How it work",
-  //     path: "#how-it-work",
-  //   },
-  
 ];
-
-export const CarTypes = ["Sport", "Suv", "MPV", "Sedan", "Coupe", "Hatchback"];
-
-export const CarCapacity = ["2 Person", "4 Person", "6 Person", "8 or More"];
 
 export const menuItems = [
   {
-    name: "Order History",
-    path: "deal-history",
+    name: "Dashboard",
+    path: "overview",
   },
   {
-    name: "Bargains",
-    path: "bargains",
+    name: "Orders",
+    path: "orders",
   },
   {
-    name: "My Parts",
-    path: "my-cars",
+    name: "Pending / New",
+    path: "pending",
   },
-  // {
-  //   name: "Logout",
-  //   path: "",
-  // },
+  {
+    name: "Ready for Dispatch",
+    path: "ready",
+  },
+  {
+    name: "Shipped Orders",
+    path: "shipped",
+  },
+  {
+    name: "Delivery Confirmation",
+    path: "confirmations",
+  },
+  {
+    name: "Products",
+    path: "products",
+  },
+  {
+    name: "Customers",
+    path: "customers",
+  },
+  {
+    name: "Analytics / Reports",
+    path: "analytics",
+  },
+  {
+    name: "Settings",
+    path: "settings",
+  },
 ];

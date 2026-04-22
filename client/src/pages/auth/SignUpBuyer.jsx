@@ -20,7 +20,9 @@ const initialValues = {
 const validationSchema = Yup.object().shape({
   email: Yup.string().required("Email is required"),
   user_name: Yup.string().required("Username is required"),
-  password: Yup.string().required("Password is required"),
+  password: Yup.string()
+    .min(8, "Password must be at least 8 characters")
+    .required("Password is required"),
 });
 
 const SignUpBuyer = () => {
@@ -28,9 +30,9 @@ const SignUpBuyer = () => {
   const navigate = useNavigate();
 
   const handleSubmit = (val) => {
-    const id = notifyPendingPromise("Registering dealer...");
+    const id = notifyPendingPromise("Registering buyer...");
     dispatch(asyncBuyerSignUp(val)).then((res) => {
-      if (res == 200) {
+      if (res == 200 || res == 201) {
         navigate("/");
         notifySuccessPromise(id, "Buyer registered  successfully!");
       } else {
