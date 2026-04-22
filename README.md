@@ -102,7 +102,7 @@ Install these before running the project:
 Open a terminal in the project root:
 
 ```bash
-cd "D:\Coding files\carspareparts"
+cd "carspareparts"
 ```
 
 Install frontend dependencies:
@@ -115,7 +115,7 @@ npm install
 Install backend dependencies:
 
 ```bash
-cd ../server
+cd server
 npm install
 ```
 
@@ -371,22 +371,5 @@ The current project is good for a polished demo. These items should be completed
 - Automated tests for auth, checkout, orders, admin actions, and catalog CRUD.
 - Optional email verification flow for changing customer email.
 
-## Demo Commit Recommendation
 
-Before committing:
-
-```bash
-cd client
-npm run build
-```
-
-Then from the project root:
-
-```bash
-git status
-git add .
-git commit -m "Prepare AutoCore demo build"
-```
-
-Only commit `.env.example` files, never real `.env` files.
 
