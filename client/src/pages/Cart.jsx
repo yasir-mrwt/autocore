@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Heart, Minus, Plus, ShoppingCart, Trash2, X } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
@@ -23,6 +23,7 @@ import { clearTokens } from "../utils/Token";
 const Cart = ({ open, onClose, onOpenWishlist }) => {
   const dispatch = useDispatch();
   const items = useSelector((state) => state.cart?.items || []);
+  const itemsRef = useRef(items);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState("");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -41,6 +42,10 @@ const Cart = ({ open, onClose, onOpenWishlist }) => {
   );
 
   useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
     if (!open || !canUseCommerceApi()) return;
 
     let active = true;
@@ -49,7 +54,7 @@ const Cart = ({ open, onClose, onOpenWishlist }) => {
       setMessage("");
 
       try {
-        const unsyncedItems = items.filter((item) => !item.remoteItemId);
+        const unsyncedItems = itemsRef.current.filter((item) => !item.remoteItemId);
         let nextCart = null;
 
         for (const item of unsyncedItems) {
@@ -75,7 +80,7 @@ const Cart = ({ open, onClose, onOpenWishlist }) => {
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [dispatch, open]);
 
   const syncRemoteCart = (request) => {
     request
@@ -97,9 +102,16 @@ const Cart = ({ open, onClose, onOpenWishlist }) => {
 
   const handleDecrement = (item) => {
     dispatch(decrementCartItem(item.id));
-    if (!canUseCommerceApi() || !item.remoteItemId) return;
+    if (!canUseCommerceApi()) return;
 
     const nextQuantity = Number(item.qty || 1) - 1;
+    if (!item.remoteItemId) {
+      if (nextQuantity < 1) {
+        syncRemoteCart(removeCartItem(item.slug || item.productId || item.id));
+      }
+      return;
+    }
+
     syncRemoteCart(
       nextQuantity < 1
         ? removeCartItem(item.remoteItemId)
@@ -109,8 +121,10 @@ const Cart = ({ open, onClose, onOpenWishlist }) => {
 
   const handleRemove = (item) => {
     dispatch(removeFromCart(item.id));
-    if (canUseCommerceApi() && item.remoteItemId) {
-      syncRemoteCart(removeCartItem(item.remoteItemId));
+    if (canUseCommerceApi()) {
+      syncRemoteCart(
+        removeCartItem(item.remoteItemId || item.slug || item.productId || item.id)
+      );
     }
   };
 

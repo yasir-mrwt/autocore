@@ -154,6 +154,19 @@ CLIENT_URL="http://localhost:5173"
 STRIPE_SECRET_KEY=""
 STRIPE_WEBHOOK_SECRET=""
 STRIPE_CURRENCY="pkr"
+
+CLOUDINARY_CLOUD_NAME=""
+CLOUDINARY_API_KEY=""
+CLOUDINARY_API_SECRET=""
+CLOUDINARY_UPLOAD_FOLDER="autocore/products"
+
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=""
+SMTP_PASS=""
+EMAIL_FROM=""
+EMAIL_FROM_NAME="AutoCore"
 ```
 
 Create a `.env` file inside `client/`.
@@ -204,14 +217,16 @@ cd server
 npm run seed:admin
 ```
 
-Seed catalog data:
+Import the full generated auto-parts dataset. This is the source used by the customer storefront and admin catalog:
 
 ```bash
 cd server
-npm run seed:catalog
+npm run import:auto-parts -- "C:\Users\Laptop Valley\Downloads\auto_parts_seed_data.json"
 ```
 
 Make sure `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `DATABASE_URL` are set before running seed scripts.
+Imported demo users use `Demo@12345` by default unless `DEMO_IMPORT_PASSWORD` is set.
+The old static catalog seeder has been disabled so placeholder products are not reintroduced.
 
 ## Running The Project
 
@@ -308,7 +323,7 @@ Customer and admin auth are intentionally separated:
 - separate route guards
 - separate Redux auth state
 
-Frontend access tokens are stored in `sessionStorage`, not `localStorage`. This means a new browser tab, including a new incognito tab, will not automatically show the user as logged in. Refreshing the same tab keeps the session for that tab.
+Frontend access tokens use role-specific `localStorage` keys so a valid customer or admin session is restored across normal browser tabs. Login/logout changes are synchronized between open tabs, while customer and admin sessions still remain separate.
 
 Password change revokes refresh sessions and sends the user back to sign in.
 
@@ -359,8 +374,8 @@ npm run db:validate
 The current project is good for a polished demo. These items should be completed before final production handover:
 
 - Real scraped product data import pipeline.
-- Persistent product image storage for uploaded images.
-- Real email provider for delivery confirmation emails.
+- Cloudinary account configuration in production environment variables.
+- SMTP account/app-password configuration in production environment variables.
 - Scheduled job or queue for sending delivery confirmation after 2 days.
 - Production Stripe keys.
 - Production webhook deployment and payment reconciliation checks.
@@ -370,6 +385,9 @@ The current project is good for a polished demo. These items should be completed
 - Final deployment documentation.
 - Automated tests for auth, checkout, orders, admin actions, and catalog CRUD.
 - Optional email verification flow for changing customer email.
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> 0b3fdb8 (shopping flow completed along with data putting data loading real time account setting and all things, final refinements still needed)

@@ -185,6 +185,27 @@ export const archiveAdminProduct = async (idOrSlug) => {
   return normalizeProduct(data.product);
 };
 
+export const uploadAdminProductImage = async (file) => {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const { data } = await catalogClient.post("/media/admin/images", formData, {
+    authRole: "Admin",
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+  return data.asset;
+};
+
+export const deleteAdminProductImage = async (publicId) => {
+  const { data } = await catalogClient.delete("/media/admin/images", {
+    authRole: "Admin",
+    data: { publicId },
+  });
+
+  return data.result;
+};
+
 export const getProduct = async (idOrSlug) => {
   const { data } = await catalogClient.get(`/catalog/products/${idOrSlug}`);
   return normalizeProduct(data.product);
@@ -209,6 +230,22 @@ export const getCategories = async () => {
 export const getBrands = async () => {
   const { data } = await catalogClient.get("/catalog/brands");
   return data.brands || [];
+};
+
+export const getVehicleModels = async (brandIdOrSlug) => {
+  if (!brandIdOrSlug) return [];
+  const { data } = await catalogClient.get(
+    `/catalog/brands/${encodeURIComponent(brandIdOrSlug)}/models`
+  );
+  return data.models || [];
+};
+
+export const getVehicleEngines = async (modelIdOrSlug) => {
+  if (!modelIdOrSlug) return [];
+  const { data } = await catalogClient.get(
+    `/catalog/models/${encodeURIComponent(modelIdOrSlug)}/engines`
+  );
+  return data.engines || [];
 };
 
 export default catalogClient;

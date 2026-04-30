@@ -14,7 +14,7 @@ const AdminDashboard = () => {
         <Route path="/orders" element={<AdminOrders />} />
         <Route
           path="/pending"
-          element={<AdminOrders title="Pending / New Orders" statusFilter={["PAID", "PROCESSING"]} mode="pending" />}
+          element={<AdminOrders title="Pending / New Orders" statusFilter={["PENDING_PAYMENT", "PAID", "PROCESSING"]} mode="pending" />}
         />
         <Route
           path="/ready"

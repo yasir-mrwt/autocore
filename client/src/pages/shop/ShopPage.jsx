@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowUpDown,
@@ -7,10 +7,13 @@ import {
   Grid3X3,
   Heart,
   List,
+  PackageCheck,
   Search,
+  ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
   Star,
+  Truck,
   X,
 } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
@@ -20,13 +23,16 @@ import {
   getBrands,
   getCategories,
   getProducts,
+  getVehicleEngines,
   normalizeProduct,
 } from "../../services/catalogService";
 import {
   addCartItem,
   addWishlistItem,
   canUseCommerceApi,
+  clearRemoteCart,
   removeWishlistItemRemote,
+  syncStripeCheckoutSession,
 } from "../../services/commerceService";
 
 const SORT_OPTIONS = [
@@ -36,6 +42,16 @@ const SORT_OPTIONS = [
   { label: "Price: High to Low", value: "price_desc" },
   { label: "Top Rated", value: "rating" },
 ];
+
+const QUICK_CATEGORIES = [
+  "Engine Parts",
+  "Brake System",
+  "Suspension",
+  "Electrical",
+  "Filters",
+];
+
+const PAGE_SIZE = 9;
 
 const ShopCard = ({ product, view }) => {
   const item = normalizeProduct(product);
@@ -294,6 +310,7 @@ const SideSection = ({ title, children, defaultOpen = true }) => {
 
 export default function ShopPage() {
   const location = useLocation();
+  const dispatch = useDispatch();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
   const [products, setProducts] = useState([]);
@@ -311,6 +328,13 @@ export default function ShopPage() {
   const [selMakes, setSelMakes] = useState(() =>
     params.get("make") ? [params.get("make")] : []
   );
+  const [selModels, setSelModels] = useState(() =>
+    params.get("model") ? [params.get("model")] : []
+  );
+  const [year, setYear] = useState(params.get("year") || "");
+  const [engineType, setEngineType] = useState(params.get("engineType") || "");
+  const [engines, setEngines] = useState([]);
+  const [engineLoading, setEngineLoading] = useState(false);
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [onlyInStock, setOnlyInStock] = useState(false);
@@ -318,9 +342,12 @@ export default function ShopPage() {
   const [sort, setSort] = useState("popular");
   const [view, setView] = useState("grid");
   const [sideOpen, setSideOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(9);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const lastFilterSignatureRef = useRef("");
   const paymentStatus = params.get("payment");
   const paymentOrder = params.get("order");
+  const paymentSessionId = params.get("session_id");
 
   useEffect(() => {
     if (paymentStatus === "success") {
@@ -328,9 +355,59 @@ export default function ShopPage() {
     }
   }, [dispatch, paymentStatus]);
 
+  useEffect(() => {
+    if (
+      paymentStatus !== "success" ||
+      !canUseCommerceApi()
+    ) {
+      return;
+    }
+
+    let active = true;
+
+    if (!paymentOrder || !paymentSessionId) {
+      clearRemoteCart()
+        .then((cart) => {
+          if (active) dispatch(setCartItems(cart.items));
+        })
+        .catch(() => {
+          if (active) dispatch(clearCart());
+        });
+
+      return () => {
+        active = false;
+      };
+    }
+
+    syncStripeCheckoutSession({
+      orderId: paymentOrder,
+      sessionId: paymentSessionId,
+    })
+      .then((result) => {
+        if (!active) return;
+        dispatch(setCartItems(result.cart.items));
+      })
+      .catch(() => {
+        clearRemoteCart()
+          .then((cart) => {
+            if (active) dispatch(setCartItems(cart.items));
+          })
+          .catch(() => {
+            if (active) dispatch(clearCart());
+          });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [dispatch, paymentOrder, paymentSessionId, paymentStatus]);
+
   const activeFilterCount =
     selCats.length +
     selMakes.length +
+    selModels.length +
+    (year ? 1 : 0) +
+    (engineType ? 1 : 0) +
     (onlyInStock ? 1 : 0) +
     (onlyOnSale ? 1 : 0) +
     (keyword ? 1 : 0) +
@@ -342,6 +419,69 @@ export default function ShopPage() {
       : selMakes.length === 1
         ? `${selMakes[0]} Parts`
         : "All Spare Parts";
+  const resultSummary = loading
+    ? "Loading verified parts..."
+    : `${pagination?.total || products.length} part${(pagination?.total || products.length) === 1 ? "" : "s"} found`;
+  const filterSignature = useMemo(
+    () =>
+      JSON.stringify({
+        keyword,
+        category: selCats[0] || "",
+        make: selMakes[0] || "",
+        model: selModels[0] || "",
+        year,
+        engineType,
+        minPrice,
+        maxPrice,
+        onlyInStock,
+        onlyOnSale,
+        sort,
+      }),
+    [
+      keyword,
+      engineType,
+      maxPrice,
+      minPrice,
+      onlyInStock,
+      onlyOnSale,
+      selCats,
+      selMakes,
+      selModels,
+      sort,
+      year,
+    ]
+  );
+  const selectedBrand = useMemo(
+    () =>
+      brands.find(
+        (brand) =>
+          brand.name === selMakes[0] || brand.slug === selMakes[0] || brand.id === selMakes[0]
+      ),
+    [brands, selMakes]
+  );
+  const availableModels = useMemo(
+    () => selectedBrand?.models || [],
+    [selectedBrand]
+  );
+  const selectedModel = useMemo(
+    () =>
+      availableModels.find(
+        (model) =>
+          model.name === selModels[0] || model.slug === selModels[0] || model.id === selModels[0]
+      ),
+    [availableModels, selModels]
+  );
+  const engineOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          engines
+            .map((engine) => engine.engineType)
+            .filter(Boolean)
+        )
+      ),
+    [engines]
+  );
 
   useEffect(() => {
     let active = true;
@@ -369,19 +509,68 @@ export default function ShopPage() {
     setKeyword(params.get("keyword") || "");
     setSelCats(params.get("category") ? [params.get("category")] : []);
     setSelMakes(params.get("make") ? [params.get("make")] : []);
+    setSelModels(params.get("model") ? [params.get("model")] : []);
+    setYear(params.get("year") || "");
+    setEngineType(params.get("engineType") || "");
   }, [params]);
 
   useEffect(() => {
+    if (!selectedModel) {
+      setEngines([]);
+      return;
+    }
+
     let active = true;
+    setEngineLoading(true);
+    getVehicleEngines(selectedModel.id || selectedModel.slug || selectedModel.name)
+      .then((nextEngines) => {
+        if (active) setEngines(nextEngines);
+      })
+      .catch(() => {
+        if (active) setEngines([]);
+      })
+      .finally(() => {
+        if (active) setEngineLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedModel]);
+
+  useEffect(() => {
+    let active = true;
+    const filtersChanged = lastFilterSignatureRef.current !== filterSignature;
+    const nextPage = filtersChanged ? 1 : page;
+
+    if (filtersChanged) {
+      lastFilterSignatureRef.current = filterSignature;
+      if (page !== 1) {
+        setProducts([]);
+        setPagination(null);
+        setPage(1);
+        return () => {
+          active = false;
+        };
+      }
+    }
+
     const timer = window.setTimeout(() => {
-      setLoading(true);
+      if (nextPage === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       setError("");
       getProducts({
-        page: 1,
-        limit: visibleCount,
+        page: nextPage,
+        limit: PAGE_SIZE,
         keyword,
         category: selCats[0],
         make: selMakes[0],
+        model: selModels[0],
+        year,
+        engineType,
         minPrice,
         maxPrice,
         inStock: onlyInStock ? "true" : "",
@@ -390,7 +579,12 @@ export default function ShopPage() {
       })
         .then(({ products: nextProducts, pagination: nextPagination }) => {
           if (!active) return;
-          setProducts(nextProducts);
+          setProducts((currentProducts) => {
+            if (nextPage === 1) return nextProducts;
+            const seen = new Set(currentProducts.map((product) => product.id));
+            const uniqueNext = nextProducts.filter((product) => !seen.has(product.id));
+            return [...currentProducts, ...uniqueNext];
+          });
           setPagination(nextPagination);
         })
         .catch(() => {
@@ -400,7 +594,9 @@ export default function ShopPage() {
           setError("Could not load parts right now. Check that the backend is running.");
         })
         .finally(() => {
-          if (active) setLoading(false);
+          if (!active) return;
+          setLoading(false);
+          setLoadingMore(false);
         });
     }, 250);
 
@@ -409,29 +605,39 @@ export default function ShopPage() {
       window.clearTimeout(timer);
     };
   }, [
+    filterSignature,
     keyword,
+    engineType,
     maxPrice,
     minPrice,
     onlyInStock,
     onlyOnSale,
     selCats,
     selMakes,
+    selModels,
     sort,
-    visibleCount,
+    year,
+    page,
   ]);
-
-  useEffect(() => {
-    setVisibleCount(9);
-  }, [keyword, maxPrice, minPrice, onlyInStock, onlyOnSale, selCats, selMakes, sort]);
 
   const toggleCat = (category) =>
     setSelCats((items) => (items.includes(category) ? [] : [category]));
-  const toggleMake = (make) =>
-    setSelMakes((items) => (items.includes(make) ? [] : [make]));
+  const selectMake = (make) => {
+    setSelMakes(make ? [make] : []);
+    setSelModels([]);
+    setEngineType("");
+  };
+  const selectModel = (model) => {
+    setSelModels(model ? [model] : []);
+    setEngineType("");
+  };
   const clearAll = () => {
     setKeyword("");
     setSelCats([]);
     setSelMakes([]);
+    setSelModels([]);
+    setYear("");
+    setEngineType("");
     setMinPrice("");
     setMaxPrice("");
     setOnlyInStock(false);
@@ -488,25 +694,87 @@ export default function ShopPage() {
         </div>
       </div>
 
-      <SideSection title="Vehicle Make">
-        <div className="space-y-2">
-          {filterLoading && <p className="text-sm text-slate-400">Loading makes...</p>}
-          {brands.map((brand) => (
-            <label
-              key={brand.id || brand.name}
-              className="group flex cursor-pointer items-center gap-2.5"
+      <SideSection title="Vehicle Fitment">
+        <div className="space-y-3">
+          {filterLoading && <p className="text-sm text-slate-400">Loading vehicles...</p>}
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-slate-400">
+              Make
+            </span>
+            <select
+              value={selMakes[0] || ""}
+              onChange={(event) => selectMake(event.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
             >
-              <input
-                type="checkbox"
-                checked={selMakes.includes(brand.name)}
-                onChange={() => toggleMake(brand.name)}
-                className="h-4 w-4 cursor-pointer rounded border-slate-300 text-[#1572D3] focus:ring-[#1572D3]"
-              />
-              <span className="flex-1 text-sm text-slate-700 transition-colors group-hover:text-[#1572D3]">
-                {brand.name}
-              </span>
-            </label>
-          ))}
+              <option value="">Any make</option>
+              {brands.map((brand) => (
+                <option key={brand.id || brand.name} value={brand.name}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-slate-400">
+              Model
+            </span>
+            <select
+              value={selModels[0] || ""}
+              onChange={(event) => selectModel(event.target.value)}
+              disabled={!selMakes[0]}
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1572D3] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">
+                {selMakes[0] ? "Any model" : "Select make first"}
+              </option>
+              {availableModels.map((model) => (
+                <option key={model.id || model.name} value={model.name}>
+                  {model.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-slate-400">
+              Year
+            </span>
+            <input
+              type="number"
+              min="1900"
+              max="2100"
+              value={year}
+              onChange={(event) => setYear(event.target.value)}
+              placeholder="e.g. 2018"
+              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-slate-400">
+              Engine Type
+            </span>
+            <select
+              value={engineType}
+              onChange={(event) => setEngineType(event.target.value)}
+              disabled={!selModels[0] || engineLoading}
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1572D3] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">
+                {engineLoading
+                  ? "Loading engines..."
+                  : selModels[0]
+                    ? "Any engine"
+                    : "Select model first"}
+              </option>
+              {engineOptions.map((engine) => (
+                <option key={engine} value={engine}>
+                  {engine}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </SideSection>
 
@@ -628,6 +896,84 @@ export default function ShopPage() {
             <span className="font-semibold text-slate-950">{pageTitle}</span>
           </div>
 
+          <section className="mb-4 overflow-hidden border-y border-slate-200 bg-white px-4 py-5 sm:rounded-lg sm:border sm:px-6 lg:mb-6 lg:px-7 lg:py-6">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#1572D3]">
+                  AutoCore Shop
+                </p>
+                <h1 className="mt-2 text-2xl font-bold leading-tight text-slate-950 sm:text-3xl lg:text-4xl">
+                  Find verified parts for your next repair
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
+                  Browse OEM-quality spare parts, filter by make, model, year,
+                  and engine type, then add items to your cart or wishlist without
+                  leaving the catalog.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <label className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Search catalog
+                </label>
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                  <Search className="h-4 w-4 text-[#1572D3]" />
+                  <input
+                    type="text"
+                    value={keyword}
+                    onChange={(event) => setKeyword(event.target.value)}
+                    placeholder="Search by part name, SKU, or category"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none"
+                  />
+                  {keyword && (
+                    <button
+                      type="button"
+                      onClick={() => setKeyword("")}
+                      className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-4 border-t border-slate-100 pt-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {QUICK_CATEGORIES.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => toggleCat(category)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                      selCats.includes(category)
+                        ? "border-[#1572D3] bg-[#E8F1FB] text-[#1572D3]"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-[#1572D3]/40 hover:text-[#1572D3]"
+                    }`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-xs text-slate-600 sm:flex sm:items-center sm:gap-3">
+                <span className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-2 font-medium">
+                  <ShieldCheck className="h-3.5 w-3.5 text-[#1572D3]" />
+                  Verified
+                </span>
+                <span className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-2 font-medium">
+                  <PackageCheck className="h-3.5 w-3.5 text-[#1572D3]" />
+                  Stocked
+                </span>
+                <span className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-2 font-medium">
+                  <Truck className="h-3.5 w-3.5 text-[#1572D3]" />
+                  Dispatch
+                </span>
+              </div>
+            </div>
+          </section>
+
           <div className="mb-4 grid grid-cols-[0.75fr_1.35fr_auto] items-center border-y border-slate-200 bg-white lg:mb-6 lg:flex lg:rounded-lg lg:border lg:px-4 lg:py-3">
             <div className="flex min-w-0 items-center lg:flex-1">
               <button
@@ -644,6 +990,9 @@ export default function ShopPage() {
               </button>
 
               <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
+                <span className="mr-2 text-sm font-semibold text-slate-700">
+                  {resultSummary}
+                </span>
                 {selCats.map((category) => (
                   <span
                     key={category}
@@ -661,11 +1010,38 @@ export default function ShopPage() {
                     className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
                   >
                     {make}
-                    <button onClick={() => toggleMake(make)}>
+                    <button onClick={() => selectMake("")}>
                       <X className="h-3 w-3" />
                     </button>
                   </span>
                 ))}
+                {selModels.map((model) => (
+                  <span
+                    key={model}
+                    className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700"
+                  >
+                    {model}
+                    <button onClick={() => selectModel("")}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                {year && (
+                  <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                    {year}
+                    <button onClick={() => setYear("")}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {engineType && (
+                  <span className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                    {engineType}
+                    <button onClick={() => setEngineType("")}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -726,7 +1102,7 @@ export default function ShopPage() {
 
           {loading ? (
             <div className={view === "list" ? "flex flex-col gap-4 px-3 sm:px-0" : "grid grid-cols-2 gap-px bg-slate-200 sm:grid-cols-2 sm:gap-5 sm:bg-transparent xl:grid-cols-3 xl:gap-6"}>
-              {[...Array(visibleCount)].map((_, index) => (
+              {[...Array(PAGE_SIZE)].map((_, index) => (
                 <div key={index} className="h-72 animate-pulse rounded-lg bg-white" />
               ))}
             </div>
@@ -757,10 +1133,11 @@ export default function ShopPage() {
             <div className="mt-8 text-center">
               <button
                 type="button"
-                onClick={() => setVisibleCount((count) => count + 6)}
-                className="mt-4 rounded-lg border border-[#1572D3]/20 bg-white px-6 py-2.5 text-sm font-semibold text-[#1572D3] transition-colors hover:bg-[#E8F1FB]"
+                onClick={() => setPage((currentPage) => currentPage + 1)}
+                disabled={loadingMore}
+                className="mt-4 rounded-lg border border-[#1572D3]/20 bg-white px-6 py-2.5 text-sm font-semibold text-[#1572D3] transition-colors hover:bg-[#E8F1FB] disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
               >
-                Load More
+                {loadingMore ? "Loading..." : "Load More"}
               </button>
             </div>
           )}

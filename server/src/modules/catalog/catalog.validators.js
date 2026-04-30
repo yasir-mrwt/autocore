@@ -21,6 +21,33 @@ const productPayloadValidator = [
   body("image").optional({ nullable: true }).trim().isLength({ max: 1000 }),
   body("images").optional().isArray({ max: 12 }),
   body("images.*").optional().isString().isLength({ max: 1000 }),
+  body("compatibilities").optional().isArray({ max: 30 }),
+  body("compatibilities.*.brandId").optional().isUUID(),
+  body("compatibilities.*.modelId").optional({ nullable: true }).custom((value) => {
+    if (value === "" || value === null || value === undefined) return true;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value)
+    );
+  }),
+  body("compatibilities.*.engineId").optional({ nullable: true }).custom((value) => {
+    if (value === "" || value === null || value === undefined) return true;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value)
+    );
+  }),
+  body("compatibilities.*.yearFrom").optional({ nullable: true }).custom((value) => {
+    if (value === "" || value === null || value === undefined) return true;
+    return Number.isInteger(Number(value)) && Number(value) >= 1900 && Number(value) <= 2100;
+  }),
+  body("compatibilities.*.yearTo").optional({ nullable: true }).custom((value) => {
+    if (value === "" || value === null || value === undefined) return true;
+    return Number.isInteger(Number(value)) && Number(value) >= 1900 && Number(value) <= 2100;
+  }),
+  body("compatibilities.*.engineType")
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 120 }),
+  body("compatibilities.*.notes").optional({ nullable: true }).trim().isLength({ max: 240 }),
 ];
 
 const createProductValidator = [

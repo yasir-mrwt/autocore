@@ -11,8 +11,12 @@ const {
 } = require("../../utils/authTokens");
 const { parseCookies } = require("../../utils/cookies");
 const { getPrisma } = require("../../config/prisma");
+const { sendMail } = require("../../../Utils/mailer");
 
 const SALT_ROUNDS = Number(process.env.PASSWORD_SALT_ROUNDS || 12);
+const RESET_OTP_TTL_MS = Number(process.env.PASSWORD_RESET_OTP_MINUTES || 10) * 60 * 1000;
+const RESET_OTP_RESEND_MS = Number(process.env.PASSWORD_RESET_RESEND_SECONDS || 60) * 1000;
+const passwordResetOtps = new Map();
 
 const selectSafeUser = {
   id: true,
@@ -36,6 +40,30 @@ const formatUser = (user) => ({
   emailVerifiedAt: user.emailVerifiedAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
+});
+
+const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+
+const buildPasswordResetEmail = ({ name, otp }) => ({
+  subject: "Reset your AutoCore password",
+  html: `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;color:#0f172a">
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0">
+        <h1 style="margin:0;color:#1572D3">AutoCore</h1>
+        <p style="margin:8px 0 0;color:#64748b">Password reset</p>
+      </div>
+      <div style="padding:24px">
+        <h2 style="margin:0 0 12px">Use this OTP to reset your password</h2>
+        <p style="line-height:1.6;color:#475569">Hi ${name || "there"}, enter this code in AutoCore to choose a new password.</p>
+        <div style="font-size:32px;letter-spacing:8px;font-weight:800;color:#1572D3;background:#E8F1FB;border-radius:10px;padding:16px;text-align:center">${otp}</div>
+        <p style="line-height:1.6;color:#64748b">This code expires in ${Math.round(RESET_OTP_TTL_MS / 60000)} minutes and can be used once.</p>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px">
+        If you did not request this, you can ignore this email.
+      </div>
+    </div>
+  `,
+  text: `Your AutoCore password reset OTP is ${otp}. It expires in ${Math.round(RESET_OTP_TTL_MS / 60000)} minutes.`,
 });
 
 const getRefreshTokenFromRequest = (req, role = "CUSTOMER") => {
@@ -275,7 +303,99 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+const requestPasswordReset = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { email } });
+    const genericMessage = "If the email exists, a password reset OTP has been sent.";
+
+    if (!user || user.status !== "ACTIVE") {
+      return res.status(200).json({ message: genericMessage });
+    }
+
+    const existing = passwordResetOtps.get(email);
+    if (existing && existing.lastSentAt && Date.now() - existing.lastSentAt < RESET_OTP_RESEND_MS) {
+      return res.status(429).json({
+        message: `Please wait ${Math.ceil((RESET_OTP_RESEND_MS - (Date.now() - existing.lastSentAt)) / 1000)} seconds before requesting another OTP.`,
+      });
+    }
+
+    const otp = createOtp();
+    passwordResetOtps.set(email, {
+      otpHash: hashToken(otp),
+      expiresAt: Date.now() + RESET_OTP_TTL_MS,
+      used: false,
+      attempts: 0,
+      lastSentAt: Date.now(),
+    });
+
+    const emailBody = buildPasswordResetEmail({ name: user.name, otp });
+    await sendMail({
+      to: user.email,
+      subject: emailBody.subject,
+      html: emailBody.html,
+      text: emailBody.text,
+    });
+
+    return res.status(200).json({ message: genericMessage });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const confirmPasswordReset = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const record = passwordResetOtps.get(email);
+
+    if (!record || record.used) {
+      return res.status(400).json({ message: "Invalid or expired OTP." });
+    }
+
+    if (Date.now() > record.expiresAt) {
+      passwordResetOtps.delete(email);
+      return res.status(400).json({ message: "OTP has expired. Request a new code." });
+    }
+
+    if (record.attempts >= 5) {
+      passwordResetOtps.delete(email);
+      return res.status(429).json({ message: "Too many invalid OTP attempts. Request a new code." });
+    }
+
+    if (hashToken(otp) !== record.otpHash) {
+      record.attempts += 1;
+      passwordResetOtps.set(email, record);
+      return res.status(400).json({ message: "Invalid OTP." });
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || user.status !== "ACTIVE") {
+      return res.status(400).json({ message: "Invalid or expired OTP." });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      }),
+      prisma.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    passwordResetOtps.set(email, { ...record, used: true });
+    return res.status(200).json({ message: "Password reset successfully. Please sign in with your new password." });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
+  confirmPasswordReset,
   register,
   login: loginWithRole(),
   adminLogin: loginWithRole("ADMIN"),
@@ -284,6 +404,7 @@ module.exports = {
   logout: logoutWithRole("CUSTOMER"),
   adminLogout: logoutWithRole("ADMIN"),
   me,
+  requestPasswordReset,
   updateProfile,
   changePassword,
 };

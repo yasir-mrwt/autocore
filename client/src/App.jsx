@@ -41,6 +41,17 @@ const App = () => {
     dispatch(asyncCurrentUser());
   }, [dispatch]);
 
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (String(event.key || "").startsWith("autocore_")) {
+        dispatch(asyncCurrentUser());
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [dispatch]);
+
   // Automatically scrolls to top whenever pathname changes
   useEffect(() => {
     window.scrollTo(0, 0);

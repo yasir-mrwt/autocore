@@ -165,6 +165,7 @@ const Navbar = ({ onOpenCart, onOpenWishlist }) => {
         isMenuOpen &&
         navRef.current &&
         !navRef.current.contains(event.target) &&
+        dropdownRef.current &&
         !dropdownRef.current.contains(event.target)
       ) {
         setIsMenuOpen(false);
@@ -410,7 +411,7 @@ const Navbar = ({ onOpenCart, onOpenWishlist }) => {
                   id="avatar"
                   src={profileImage}
                   alt="Avatar"
-                  className=" object-cover"
+                  className="h-10 w-10 rounded-full object-cover"
                 />
               </button>
             </div>

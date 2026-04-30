@@ -14,7 +14,16 @@ import Quote_img2 from "/assets/image/quote_img2.png";
 import User_img from "/assets/image/user_img.png";
 import ProductCard from "../components/ProductCard";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, ChevronLeft, ChevronRight, Flame, Tag } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  Search,
+  ShieldCheck,
+  Tag,
+  Truck,
+} from "lucide-react";
 import { getProducts } from "../services/catalogService";
 
 const HomePage = () => {
@@ -54,8 +63,8 @@ const HomePage = () => {
 
     setProductsLoading(true);
     Promise.all([
-      getProducts({ onSale: "true", sort: "popular", limit: 8 }),
-      getProducts({ sort: "popular", limit: 8 }),
+      getProducts({ onSale: "true", sort: "discount", limit: 8 }),
+      getProducts({ sort: "sales", limit: 8 }),
       getProducts({ sort: "newest", limit: 8 }),
     ])
       .then(([saleData, hotData, featuredData]) => {
@@ -145,7 +154,7 @@ const HomePage = () => {
       </div>
 
       <div className="mt-8 flex justify-center">
-        <Link to="/shop?page=1" className="product-section-view-all">
+        <Link to="/shop" className="product-section-view-all">
           View All Parts <ArrowRight size={16} />
         </Link>
       </div>
@@ -156,6 +165,12 @@ const HomePage = () => {
     <div className="relative overflow-x-hidden">
       <div className="flex min-h-screen w-full flex-col items-center justify-center overflow-hidden pl-4 md:flex-row md:pl-[4vw]">
         <div className="order-1 flex w-full flex-col justify-center pr-4 pt-28 md:order-1 md:w-[42%] md:pr-0 md:pt-0">
+          <div className="mb-4 flex justify-center md:justify-start">
+            <span className="inline-flex items-center gap-2 rounded-lg border border-[#1572D3]/15 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-[#1572D3] shadow-sm">
+              <ShieldCheck className="h-4 w-4" />
+              Verified auto parts
+            </span>
+          </div>
           <div className="relative w-full md:w-fit">
             <h1 className="w-full text-center text-3xl font-semibold text-[#242424] md:text-start md:text-[48px] md:leading-[50px]">
               Find the Right <br /> Car Parts{" "}
@@ -176,11 +191,23 @@ const HomePage = () => {
           </p>
           <div className="mt-6 flex justify-center md:justify-start">
             <Link
-              to="/shop?page=1"
-              className="flex items-center gap-2 rounded-xl bg-[#1572D3] px-8 py-3 font-semibold text-white transition-all hover:bg-[#0d5bb5]"
+              to="/shop"
+              className="flex items-center gap-2 rounded-lg bg-[#1572D3] px-8 py-3 font-semibold text-white shadow-lg shadow-[#1572D3]/20 transition-all hover:bg-[#0d5bb5]"
             >
               Shop Now <ArrowRight size={18} />
             </Link>
+          </div>
+          <div className="mt-7 grid grid-cols-3 gap-2 text-center md:max-w-md md:text-left">
+            {[
+              ["1k+", "Parts"],
+              ["24h", "Dispatch"],
+              ["OEM", "Fitment"],
+            ].map(([value, label]) => (
+              <div key={label} className="rounded-lg border border-slate-100 bg-white/80 p-3 shadow-sm">
+                <p className="text-lg font-bold text-slate-950">{value}</p>
+                <p className="text-xs font-medium text-slate-500">{label}</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -217,6 +244,36 @@ const HomePage = () => {
           </div>
         </div>
       </div>
+
+      <section className="container px-4 pb-8">
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            {
+              icon: <Search className="h-5 w-5" />,
+              title: "Search by part or SKU",
+              text: "Use the shop filters to narrow down category, make, and price.",
+            },
+            {
+              icon: <ShieldCheck className="h-5 w-5" />,
+              title: "Verified product catalog",
+              text: "Every catalog item keeps fitment, stock, and pricing easy to scan.",
+            },
+            {
+              icon: <Truck className="h-5 w-5" />,
+              title: "Checkout to dispatch",
+              text: "Cart, Stripe checkout, order tracking, and delivery confirmation are wired in.",
+            },
+          ].map((item) => (
+            <div key={item.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 grid h-10 w-10 place-items-center rounded-lg bg-[#E8F1FB] text-[#1572D3]">
+                {item.icon}
+              </div>
+              <h2 className="text-base font-bold text-slate-950">{item.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section id="why-choose-us" className="relative my-10 md:my-20">
         <div className="flex flex-col items-stretch gap-0 lg:flex-row">
@@ -296,8 +353,8 @@ const HomePage = () => {
 
         <div className="mb-10 mt-12 flex items-center justify-center">
           <Link
-            to="/shop?page=1"
-            className="flex items-center gap-2 rounded-xl bg-[#1572D3] px-10 py-3 font-semibold text-white transition-all hover:bg-[#0d5bb5]"
+            to="/shop"
+            className="flex items-center gap-2 rounded-lg bg-[#1572D3] px-10 py-3 font-semibold text-white transition-all hover:bg-[#0d5bb5]"
           >
             Shop Now <ArrowRight size={18} />
           </Link>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Heart, ShoppingCart, Trash2, X } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
@@ -15,8 +15,13 @@ import {
 const Wishlist = ({ open, onClose, onOpenCart }) => {
   const dispatch = useDispatch();
   const items = useSelector((state) => state.wishlist?.items || []);
+  const itemsRef = useRef(items);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   useEffect(() => {
     if (!open || !canUseCommerceApi()) return;
@@ -27,7 +32,7 @@ const Wishlist = ({ open, onClose, onOpenCart }) => {
       setMessage("");
 
       try {
-        const unsyncedItems = items.filter((item) => !item.remoteItemId);
+        const unsyncedItems = itemsRef.current.filter((item) => !item.remoteItemId);
         let nextWishlist = null;
 
         for (const item of unsyncedItems) {
@@ -50,7 +55,7 @@ const Wishlist = ({ open, onClose, onOpenCart }) => {
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [dispatch, open]);
 
   const moveToCart = (item) => {
     dispatch(

@@ -15,7 +15,7 @@ const normalizeRole = (role = "Buyer") => (role === "Admin" ? "Admin" : "Buyer")
 
 const getKeys = (role) => ROLE_KEYS[normalizeRole(role)];
 
-const authStorage = () => sessionStorage;
+const authStorage = () => localStorage;
 
 const clearFromAllStorage = (key) => {
   sessionStorage.removeItem(key);
@@ -70,8 +70,8 @@ export const clearLegacyTokens = () => {
     localStorage.removeItem(key);
   });
   Object.values(ROLE_KEYS).forEach((keys) => {
-    localStorage.removeItem(keys.accessToken);
-    localStorage.removeItem(keys.refreshToken);
-    localStorage.removeItem(keys.userType);
+    sessionStorage.removeItem(keys.accessToken);
+    sessionStorage.removeItem(keys.refreshToken);
+    sessionStorage.removeItem(keys.userType);
   });
 };

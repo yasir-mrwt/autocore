@@ -4,20 +4,25 @@ import {
   Download,
   Edit3,
   Eye,
+  ImagePlus,
   Mail,
   PackageCheck,
   Save,
   Search,
   Settings,
   ShieldCheck,
+  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
 import {
   archiveAdminProduct,
   createAdminProduct,
+  deleteAdminProductImage,
+  getBrands,
   getAdminProducts,
   updateAdminProduct,
+  uploadAdminProductImage,
 } from "../../services/catalogService";
 import { getAdminCustomers } from "../../services/commerceService";
 import { notifyError, notifySuccess } from "../../utils/Toast";
@@ -54,7 +59,7 @@ const pageMeta = {
   products: {
     eyebrow: "Catalog",
     title: "Products",
-    description: "Monitor product pricing, category, and stock state. CRUD controls can plug into this layout next.",
+    description: "Create products, update pricing, control stock, manage sale pricing, upload media, and map vehicle fitment.",
     icon: Boxes,
   },
   customers: {
@@ -71,9 +76,38 @@ const pageMeta = {
   },
 };
 
+const blankCompatibility = {
+  brandId: "",
+  modelId: "",
+  yearFrom: "",
+  yearTo: "",
+  engineType: "",
+  notes: "",
+};
+
+const toCompatibilityDraft = (compatibility) => ({
+  brandId: compatibility.brand?.id || compatibility.brandId || "",
+  modelId: compatibility.model?.id || compatibility.modelId || "",
+  yearFrom: compatibility.yearFrom || "",
+  yearTo: compatibility.yearTo || "",
+  engineType:
+    compatibility.engineType || compatibility.engine?.engineType || "",
+  notes: compatibility.notes || "",
+});
+
+const extractCloudinaryPublicId = (url) => {
+  if (!url || !String(url).includes("/upload/")) return "";
+
+  const [, afterUpload = ""] = String(url).split("/upload/");
+  const withoutVersion = afterUpload.replace(/^v\d+\//, "");
+  const withoutExtension = withoutVersion.replace(/\.[a-z0-9]+$/i, "");
+  return withoutExtension;
+};
+
 const AdminPlaceholderPage = ({ type }) => {
   const meta = pageMeta[type] || pageMeta.settings;
   const [products, setProducts] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(type !== "settings");
   const [query, setQuery] = useState("");
@@ -81,6 +115,7 @@ const AdminPlaceholderPage = ({ type }) => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [productDraft, setProductDraft] = useState(null);
   const [savingProduct, setSavingProduct] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({
     brandName: "AutoCore",
     contactEmail: "support@autocore.local",
@@ -100,8 +135,11 @@ const AdminPlaceholderPage = ({ type }) => {
 
     if (type === "products") {
       setLoading(true);
-      getAdminProducts({ limit: 100, status: "ALL" })
-        .then(({ products: nextProducts }) => setProducts(nextProducts))
+      Promise.all([getAdminProducts({ limit: 100, status: "ALL" }), getBrands()])
+        .then(([{ products: nextProducts }, nextBrands]) => {
+          setProducts(nextProducts);
+          setBrands(nextBrands);
+        })
         .catch(() => notifyError("Could not load products."))
         .finally(() => setLoading(false));
     }
@@ -189,9 +227,13 @@ const AdminPlaceholderPage = ({ type }) => {
       price: product.price || 0,
       originalPrice: product.originalPrice || "",
       stock: product.stock || 0,
+      lowStockThreshold: product.inventory?.lowStockThreshold ?? 5,
+      warehouseLocation: product.inventory?.warehouseLocation || "",
       status: product.status || "ACTIVE",
       image: product.image || "",
+      imagePublicId: extractCloudinaryPublicId(product.image),
       inStock: Boolean(product.inStock),
+      compatibilities: (product.compatibilities || []).map(toCompatibilityDraft),
     });
   };
 
@@ -211,9 +253,13 @@ const AdminPlaceholderPage = ({ type }) => {
       price: "",
       originalPrice: "",
       stock: 10,
+      lowStockThreshold: 5,
+      warehouseLocation: "",
       status: "ACTIVE",
       image: "",
+      imagePublicId: "",
       inStock: true,
+      compatibilities: [{ ...blankCompatibility }],
     });
   };
 
@@ -224,16 +270,118 @@ const AdminPlaceholderPage = ({ type }) => {
     }));
   };
 
+  const updateCompatibilityDraft = (index, field, value) => {
+    setProductDraft((current) => ({
+      ...current,
+      compatibilities: (current.compatibilities || []).map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+
+        if (field === "brandId") {
+          return {
+            ...item,
+            brandId: value,
+            modelId: "",
+          };
+        }
+
+        return {
+          ...item,
+          [field]: value,
+        };
+      }),
+    }));
+  };
+
+  const addCompatibilityDraft = () => {
+    setProductDraft((current) => ({
+      ...current,
+      compatibilities: [
+        ...(current.compatibilities || []),
+        { ...blankCompatibility },
+      ],
+    }));
+  };
+
+  const removeCompatibilityDraft = (index) => {
+    setProductDraft((current) => ({
+      ...current,
+      compatibilities: (current.compatibilities || []).filter(
+        (_, itemIndex) => itemIndex !== index
+      ),
+    }));
+  };
+
+  const getModelsForBrand = (brandId) =>
+    brands.find((brand) => brand.id === brandId)?.models || [];
+
+  const handleProductImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setImageUploading(true);
+    try {
+      const asset = await uploadAdminProductImage(file);
+      setProductDraft((current) => ({
+        ...current,
+        image: asset.url,
+        imagePublicId: asset.publicId,
+      }));
+      notifySuccess("Image uploaded to Cloudinary.");
+    } catch (error) {
+      notifyError(error?.response?.data?.message || "Could not upload image.");
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const removeProductImage = async () => {
+    const publicId =
+      productDraft.imagePublicId || extractCloudinaryPublicId(productDraft.image);
+
+    if (publicId) {
+      setImageUploading(true);
+      try {
+        await deleteAdminProductImage(publicId);
+        notifySuccess("Image deleted from Cloudinary.");
+      } catch (error) {
+        notifyError(error?.response?.data?.message || "Could not delete Cloudinary image.");
+        setImageUploading(false);
+        return;
+      }
+    }
+
+    setProductDraft((current) => ({
+      ...current,
+      image: "",
+      imagePublicId: "",
+    }));
+    setImageUploading(false);
+  };
+
   const saveProductDraft = async () => {
     setSavingProduct(true);
     try {
+      const compatibilities = (productDraft.compatibilities || [])
+        .filter((item) => item.brandId)
+        .map((item) => ({
+          brandId: item.brandId,
+          modelId: item.modelId || null,
+          yearFrom: item.yearFrom === "" ? null : Number(item.yearFrom),
+          yearTo: item.yearTo === "" ? null : Number(item.yearTo),
+          engineType: item.engineType || null,
+          notes: item.notes || null,
+        }));
       const payload = {
         ...productDraft,
         price: Number(productDraft.price || 0),
         originalPrice:
           productDraft.originalPrice === "" ? null : Number(productDraft.originalPrice),
         stock: Number(productDraft.stock || 0),
+        lowStockThreshold: Number(productDraft.lowStockThreshold || 0),
+        warehouseLocation: productDraft.warehouseLocation || null,
         inStock: Boolean(productDraft.inStock),
+        compatibilities,
       };
       const savedProduct = selectedProduct.id
         ? await updateAdminProduct(selectedProduct.id, payload)
@@ -368,8 +516,8 @@ const AdminPlaceholderPage = ({ type }) => {
               </div>
             ))}
           </div>
-          <div className="overflow-hidden rounded-lg bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+            <table className="min-w-[920px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Product</th>
@@ -454,8 +602,8 @@ const AdminPlaceholderPage = ({ type }) => {
               </div>
             ))}
           </div>
-          <div className="overflow-hidden rounded-lg bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+            <table className="min-w-[920px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Customer</th>
@@ -653,7 +801,8 @@ const AdminPlaceholderPage = ({ type }) => {
             </div>
 
             <div className="space-y-5 p-5">
-              <div className="flex items-center gap-4 rounded-lg bg-[#F7FBFF] p-4">
+              <div className="rounded-lg bg-[#F7FBFF] p-4">
+                <div className="flex items-center gap-4">
                 <img
                   src={productDraft.image || selectedProduct.image}
                   alt={productDraft.name || selectedProduct.name}
@@ -668,45 +817,180 @@ const AdminPlaceholderPage = ({ type }) => {
                     {productDraft.sku || "SKU pending"}
                   </p>
                 </div>
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#1572D3] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0d5bb5]">
+                    <ImagePlus className="h-4 w-4" />
+                    {imageUploading ? "Uploading..." : "Upload Image"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={handleProductImageUpload}
+                      disabled={imageUploading}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={removeProductImage}
+                    disabled={imageUploading || !productDraft.image}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-100 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Image
+                  </button>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  Upload stores the image in Cloudinary and writes the secure URL
+                  into the product image field below.
+                </p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                {[
-                  ["name", "Product name"],
-                  ["sku", "SKU"],
-                  ["partNumber", "Part number"],
-                  ["category", "Category"],
-                  ["price", "Price"],
-                  ["originalPrice", "Original price"],
-                  ["stock", "Stock"],
-                  ["image", "Primary image URL"],
-                  ["shortDescription", "Short description"],
-                ].map(([field, label]) => (
-                  <label key={field} className="block">
+              <div className="rounded-lg border border-slate-100 p-4">
+                <p className="text-sm font-bold text-slate-900">Product basics</p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["name", "Product name"],
+                    ["sku", "SKU"],
+                    ["partNumber", "Part number"],
+                    ["category", "Category"],
+                    ["shortDescription", "Short description"],
+                    ["image", "Primary image URL"],
+                  ].map(([field, label]) => (
+                    <label key={field} className="block">
+                      <span className="text-xs font-bold uppercase text-slate-400">
+                        {label}
+                      </span>
+                      <input
+                        value={productDraft[field]}
+                        onChange={(event) => updateProductDraft(field, event.target.value)}
+                        className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-100 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">
+                      Pricing and sale
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Set the selling price. Add an original price higher than
+                      selling price to mark this product as on sale.
+                    </p>
+                  </div>
+                  {Number(productDraft.originalPrice || 0) >
+                    Number(productDraft.price || 0) && (
+                    <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
+                      On Sale
+                    </span>
+                  )}
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
                     <span className="text-xs font-bold uppercase text-slate-400">
-                      {label}
+                      Selling price
                     </span>
                     <input
-                      type={["price", "stock", "originalPrice"].includes(field) ? "number" : "text"}
-                      value={productDraft[field]}
-                      onChange={(event) => updateProductDraft(field, event.target.value)}
+                      type="number"
+                      min="0"
+                      value={productDraft.price}
+                      onChange={(event) => updateProductDraft("price", event.target.value)}
                       className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
                     />
                   </label>
-                ))}
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase text-slate-400">
+                      Original price / sale compare-at
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={productDraft.originalPrice}
+                      onChange={(event) =>
+                        updateProductDraft("originalPrice", event.target.value)
+                      }
+                      placeholder="Leave empty when not on sale"
+                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                  </label>
+                </div>
+                {productDraft.originalPrice && (
+                  <button
+                    type="button"
+                    onClick={() => updateProductDraft("originalPrice", "")}
+                    className="mt-3 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Remove sale
+                  </button>
+                )}
               </div>
 
-              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-100 p-4">
-                <span className="font-semibold text-slate-700">Product is in stock</span>
-                <input
-                  type="checkbox"
-                  checked={productDraft.inStock}
-                  onChange={(event) =>
-                    updateProductDraft("inStock", event.target.checked)
-                  }
-                  className="h-4 w-4 accent-[#1572D3]"
-                />
-              </label>
+              <div className="rounded-lg border border-slate-100 p-4">
+                <p className="text-sm font-bold text-slate-900">Inventory control</p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase text-slate-400">
+                      Quantity in stock
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={productDraft.stock}
+                      onChange={(event) => {
+                        updateProductDraft("stock", event.target.value);
+                        if (Number(event.target.value) > 0) {
+                          updateProductDraft("inStock", true);
+                        }
+                      }}
+                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase text-slate-400">
+                      Low-stock alert
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={productDraft.lowStockThreshold}
+                      onChange={(event) =>
+                        updateProductDraft("lowStockThreshold", event.target.value)
+                      }
+                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase text-slate-400">
+                      Warehouse
+                    </span>
+                    <input
+                      value={productDraft.warehouseLocation}
+                      onChange={(event) =>
+                        updateProductDraft("warehouseLocation", event.target.value)
+                      }
+                      placeholder="Aisle / shelf"
+                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                  </label>
+                </div>
+                <label className="mt-4 flex cursor-pointer items-center justify-between rounded-lg bg-slate-50 p-4">
+                  <span className="font-semibold text-slate-700">
+                    Product is available for purchase
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={productDraft.inStock}
+                    onChange={(event) =>
+                      updateProductDraft("inStock", event.target.checked)
+                    }
+                    className="h-4 w-4 accent-[#1572D3]"
+                  />
+                </label>
+              </div>
 
               <label className="block">
                 <span className="text-xs font-bold uppercase text-slate-400">
@@ -723,11 +1007,197 @@ const AdminPlaceholderPage = ({ type }) => {
                 </select>
               </label>
 
+              <div className="rounded-lg border border-slate-100 p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">
+                      Vehicle compatibility
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Map this part to Make, Model, Year, and Engine Type so
+                      customers can find exact-fit parts.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addCompatibilityDraft}
+                    className="shrink-0 rounded-lg border border-[#1572D3]/20 px-3 py-2 text-xs font-semibold text-[#1572D3] hover:bg-[#E8F1FB]"
+                  >
+                    Add Fitment
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {(productDraft.compatibilities || []).map((compatibility, index) => {
+                    const models = getModelsForBrand(compatibility.brandId);
+
+                    return (
+                      <div
+                        key={index}
+                        className="rounded-lg border border-slate-100 bg-slate-50 p-3"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                            Fitment {index + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeCompatibilityDraft(index)}
+                            className="text-xs font-semibold text-red-500 hover:text-red-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase text-slate-400">
+                              Make
+                            </span>
+                            <select
+                              value={compatibility.brandId}
+                              onChange={(event) =>
+                                updateCompatibilityDraft(
+                                  index,
+                                  "brandId",
+                                  event.target.value
+                                )
+                              }
+                              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                            >
+                              <option value="">Select make</option>
+                              {brands.map((brand) => (
+                                <option key={brand.id} value={brand.id}>
+                                  {brand.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase text-slate-400">
+                              Model
+                            </span>
+                            <select
+                              value={compatibility.modelId}
+                              onChange={(event) =>
+                                updateCompatibilityDraft(
+                                  index,
+                                  "modelId",
+                                  event.target.value
+                                )
+                              }
+                              disabled={!compatibility.brandId}
+                              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1572D3] disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                              <option value="">
+                                {compatibility.brandId
+                                  ? "Any model"
+                                  : "Select make first"}
+                              </option>
+                              {models.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase text-slate-400">
+                              Year from
+                            </span>
+                            <input
+                              type="number"
+                              min="1900"
+                              max="2100"
+                              value={compatibility.yearFrom}
+                              onChange={(event) =>
+                                updateCompatibilityDraft(
+                                  index,
+                                  "yearFrom",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="2012"
+                              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase text-slate-400">
+                              Year to
+                            </span>
+                            <input
+                              type="number"
+                              min="1900"
+                              max="2100"
+                              value={compatibility.yearTo}
+                              onChange={(event) =>
+                                updateCompatibilityDraft(
+                                  index,
+                                  "yearTo",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="2024"
+                              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase text-slate-400">
+                              Engine Type
+                            </span>
+                            <input
+                              value={compatibility.engineType}
+                              onChange={(event) =>
+                                updateCompatibilityDraft(
+                                  index,
+                                  "engineType",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="1.8L Petrol, 2.0 Diesel..."
+                              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase text-slate-400">
+                              Notes
+                            </span>
+                            <input
+                              value={compatibility.notes}
+                              onChange={(event) =>
+                                updateCompatibilityDraft(
+                                  index,
+                                  "notes",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Front axle, left side..."
+                              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {!productDraft.compatibilities?.length && (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                      No vehicle fitment added yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-lg bg-slate-50 p-4">
                 <p className="text-sm font-bold text-slate-900">Production note</p>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  These controls now save through the admin catalog API. The next phase
-                  can add bulk import and advanced compatibility mapping.
+                  These controls save through the admin catalog API. The next phase
+                  can add bulk import for large scraped inventories.
                 </p>
               </div>
 

@@ -1,5 +1,6 @@
 const { getPrisma } = require("../../config/prisma");
 const { formatCart, formatOrder, formatWishlistItem } = require("./commerce.formatters");
+const { sendMail } = require("../../../Utils/mailer");
 const { getStripeInstance } = require("../../../Utils/stripe");
 
 const productInclude = {
@@ -53,7 +54,7 @@ const adminOrderInclude = {
 };
 
 const isUuid = (value) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || "")
   );
 
@@ -195,11 +196,18 @@ const updateCartItem = async (req, res, next) => {
 const removeCartItem = async (req, res, next) => {
   try {
     const prisma = getPrisma();
-    if (isUuid(req.params.itemId)) {
+    const value = req.params.itemId;
+    const product = await findActiveProduct(prisma, value);
+    const filters = [
+      ...(isUuid(value) ? [{ id: value }] : []),
+      ...(product ? [{ productId: product.id }] : []),
+    ];
+
+    if (filters.length) {
       await prisma.cartItem.deleteMany({
         where: {
-          id: req.params.itemId,
           userId: req.user.id,
+          OR: filters,
         },
       });
     }
@@ -401,6 +409,50 @@ const buildDeliveryConfirmationEmail = (order) => ({
   text: `AutoCore delivery confirmation for ${order.orderNumber}. Confirm receipt here: ${getClientUrl()}/buyer/watch-list`,
   ctaUrl: `${getClientUrl()}/buyer/watch-list`,
 });
+
+const buildPaymentReceiptEmail = (order) => ({
+  subject: `Payment received for ${order.orderNumber}`,
+  html: `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;color:#0f172a">
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0">
+        <h1 style="margin:0;color:#1572D3">AutoCore</h1>
+        <p style="margin:8px 0 0;color:#64748b">Payment confirmation</p>
+      </div>
+      <div style="padding:24px">
+        <h2 style="margin:0 0 12px">Your payment was received</h2>
+        <p style="line-height:1.6;color:#475569">
+          We received payment for order <strong>${order.orderNumber}</strong>.
+          Our team will prepare your auto parts for dispatch.
+        </p>
+        <p style="line-height:1.6;color:#475569">
+          Order total: <strong>${order.currency || "PKR"} ${Number(order.total || 0).toLocaleString()}</strong>
+        </p>
+        <a href="${getClientUrl()}/buyer/watch-list" style="display:inline-block;background:#1572D3;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">
+          View order
+        </a>
+      </div>
+    </div>
+  `,
+  text: `AutoCore received payment for ${order.orderNumber}. Total ${order.currency || "PKR"} ${Number(order.total || 0).toLocaleString()}. View order: ${getClientUrl()}/buyer/watch-list`,
+});
+
+const sendPaymentReceiptSafely = async (order) => {
+  const recipient = order?.user?.email;
+  if (!recipient) return null;
+
+  try {
+    const email = buildPaymentReceiptEmail(order);
+    return await sendMail({
+      to: recipient,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+  } catch (error) {
+    console.error(`Could not send payment email for ${order.orderNumber}:`, error.message);
+    return null;
+  }
+};
 
 const createOrderFromCart = async (req, res, next) => {
   try {
@@ -975,7 +1027,11 @@ const confirmOrderDelivery = async (req, res, next) => {
 const sendDeliveryConfirmation = async (req, res, next) => {
   try {
     const prisma = getPrisma();
-    const existing = await findOrderByIdentity(prisma, req.params.orderId);
+    const existing = await findOrderByIdentity(
+      prisma,
+      req.params.orderId,
+      adminOrderInclude
+    );
 
     if (!existing) {
       return res.status(404).json({ message: "Order not found." });
@@ -984,6 +1040,29 @@ const sendDeliveryConfirmation = async (req, res, next) => {
     if (!["SHIPPED", "DELIVERED"].includes(existing.status)) {
       return res.status(409).json({
         message: "Delivery confirmation can only be sent for shipped orders.",
+      });
+    }
+
+    const emailPreview = buildDeliveryConfirmationEmail(existing);
+    const recipient = existing.user?.email;
+
+    if (!recipient) {
+      return res.status(400).json({ message: "Order customer email is missing." });
+    }
+
+    let mailResult;
+    try {
+      mailResult = await sendMail({
+        to: recipient,
+        ...emailPreview,
+      });
+    } catch (mailError) {
+      const isConfigError = mailError.message === "SMTP is not configured.";
+      return res.status(isConfigError ? 503 : 502).json({
+        message: isConfigError
+          ? "SMTP is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, and EMAIL_FROM_NAME."
+          : "Could not send delivery confirmation email.",
+        detail: mailError.message,
       });
     }
 
@@ -1001,32 +1080,30 @@ const sendDeliveryConfirmation = async (req, res, next) => {
         orderId: updatedOrder.id,
         adminId: req.user.id,
         status: updatedOrder.status,
-        label: "Delivery confirmation email queued",
-        message:
-          "Demo email trigger recorded. Production should send this through a queue/cron job.",
+        label: "Delivery confirmation email sent",
+        message: `Delivery confirmation email sent to ${recipient}.`,
         metadata: {
           sentAt,
           confirmationUrl: `${getClientUrl()}/buyer/watch-list`,
-          demoOnly: true,
+          messageId: mailResult.messageId,
         },
       });
 
       await createAdminAuditLog(tx, {
         adminId: req.user.id,
-        action: "ORDER_CONFIRMATION_EMAIL_QUEUED",
+        action: "ORDER_CONFIRMATION_EMAIL_SENT",
         order: updatedOrder,
-        metadata: { sentAt, demoOnly: true },
+        metadata: { sentAt, messageId: mailResult.messageId },
       });
 
       return updatedOrder;
     });
 
-    const emailPreview = buildDeliveryConfirmationEmail(order);
-
     return res.status(200).json({
-      message: "Delivery confirmation email trigger recorded for demo.",
+      message: "Delivery confirmation email sent.",
       order: formatOrder(order),
       emailPreview,
+      messageId: mailResult.messageId,
     });
   } catch (error) {
     return next(error);
@@ -1145,7 +1222,7 @@ const createStripeCheckoutSession = async (req, res, next) => {
       payment_method_types: ["card"],
       customer_email: req.user.email,
       line_items: lineItems,
-      success_url: `${clientUrl}/shop?payment=success&order=${order.orderNumber}`,
+      success_url: `${clientUrl}/shop?payment=success&order=${order.orderNumber}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${clientUrl}/shop?payment=cancelled&order=${order.orderNumber}`,
       metadata: {
         orderId: order.id,
@@ -1188,7 +1265,8 @@ const markStripeSessionSucceeded = async (session) => {
   const prisma = getPrisma();
   const orderId = session.metadata?.orderId;
 
-  if (!orderId) return;
+  if (!orderId) return null;
+  let updatedOrderId = null;
 
   await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
@@ -1247,7 +1325,20 @@ const markStripeSessionSucceeded = async (session) => {
         },
       });
     }
+
+    updatedOrderId = updatedOrder.id;
   });
+
+  const updatedOrder = await prisma.order.findUnique({
+    where: { id: updatedOrderId || orderId },
+    include: adminOrderInclude,
+  });
+
+  if (updatedOrderId) {
+    await sendPaymentReceiptSafely(updatedOrder);
+  }
+
+  return updatedOrder;
 };
 
 const markStripeSessionFailed = async (session, status = "FAILED") => {
@@ -1306,6 +1397,65 @@ const handleStripeWebhook = async (req, res, next) => {
   }
 };
 
+const syncStripeCheckoutSession = async (req, res, next) => {
+  try {
+    const stripe = getStripeInstance();
+
+    if (!stripe) {
+      return res.status(503).json({ message: "Stripe is not configured." });
+    }
+
+    const { sessionId } = req.body || {};
+    if (!sessionId) {
+      return res.status(400).json({ message: "Stripe session id is required." });
+    }
+
+    const prisma = getPrisma();
+    const order = await findOrderForUser(
+      prisma,
+      req.user.id,
+      req.params.orderId,
+      orderInclude
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (
+      session.metadata?.orderId !== order.id ||
+      session.metadata?.userId !== req.user.id
+    ) {
+      return res.status(403).json({
+        message: "Stripe session does not match this order.",
+      });
+    }
+
+    let syncedOrder = order;
+    if (session.payment_status === "paid" || session.status === "complete") {
+      syncedOrder = await markStripeSessionSucceeded(session);
+    } else if (["expired", "canceled"].includes(session.status)) {
+      await markStripeSessionFailed(session, "CANCELLED");
+      syncedOrder = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: orderInclude,
+      });
+    }
+
+    const cartItems = await getUserCartItems(prisma, req.user.id);
+
+    return res.status(200).json({
+      order: formatOrder(syncedOrder),
+      cart: formatCart(cartItems),
+      paymentStatus: session.payment_status,
+      checkoutStatus: session.status,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   addCartItem,
   addWishlistItem,
@@ -1328,6 +1478,7 @@ module.exports = {
   removeWishlistItem,
   sendDeliveryConfirmation,
   shipOrder,
+  syncStripeCheckoutSession,
   updateOrderDelivery,
   updateCartItem,
 };

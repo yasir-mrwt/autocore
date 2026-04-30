@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Clock3,
   CreditCard,
@@ -52,12 +52,36 @@ const downloadCsv = (filename, rows) => {
 };
 
 const getStatusClass = (status) => {
-  if (["PAID", "PROCESSING", "READY_TO_DISPATCH", "SHIPPED"].includes(status)) {
-    return "bg-[#E8F1FB] text-[#1572D3]";
+  if (status === "SUCCEEDED") return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "PENDING" || status === "PENDING_PAYMENT") {
+    return "border border-amber-200 bg-amber-50 text-amber-700";
   }
-  if (status === "DELIVERED") return "bg-green-100 text-green-700";
-  if (["CANCELLED", "REFUNDED"].includes(status)) return "bg-red-100 text-red-600";
-  return "bg-amber-100 text-amber-700";
+  if (["PAID", "PROCESSING", "READY_TO_DISPATCH", "SHIPPED"].includes(status)) {
+    return "border border-[#1572D3]/20 bg-[#E8F1FB] text-[#1572D3]";
+  }
+  if (status === "DELIVERED") return "border border-green-200 bg-green-50 text-green-700";
+  if (["CANCELLED", "REFUNDED", "FAILED"].includes(status)) {
+    return "border border-red-200 bg-red-50 text-red-600";
+  }
+  return "border border-slate-200 bg-slate-50 text-slate-600";
+};
+
+const isWithinDateRange = (order, range) => {
+  if (range === "all") return true;
+  const createdAt = new Date(order.placedAt || order.createdAt);
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+
+  if (range === "today") return createdAt >= start;
+  if (range === "7d") start.setDate(start.getDate() - 6);
+  if (range === "30d") start.setDate(start.getDate() - 29);
+  if (range === "year") {
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+  }
+
+  return createdAt >= start;
 };
 
 const getNextActionText = (order) => {
@@ -75,7 +99,6 @@ const getNextActionText = (order) => {
 const AdminOrders = ({
   title = "Orders",
   statusFilter = null,
-  mode = "all",
 }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +106,9 @@ const AdminOrders = ({
   const [drafts, setDrafts] = useState({});
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("newest");
+  const [dateRange, setDateRange] = useState("all");
+  const [paymentFilter, setPaymentFilter] = useState("all");
+  const [statusView, setStatusView] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   const stats = useMemo(
@@ -100,6 +126,9 @@ const AdminOrders = ({
     const term = query.trim().toLowerCase();
     const filtered = orders.filter((order) => {
       if (statusFilter?.length && !statusFilter.includes(order.status)) return false;
+      if (statusView !== "all" && order.status !== statusView) return false;
+      if (paymentFilter !== "all" && order.paymentStatus !== paymentFilter) return false;
+      if (!isWithinDateRange(order, dateRange)) return false;
       if (!term) return true;
       return [
         order.orderNumber,
@@ -115,6 +144,7 @@ const AdminOrders = ({
 
     return [...filtered].sort((a, b) => {
       if (sort === "value") return Number(b.total || 0) - Number(a.total || 0);
+      if (sort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       if (sort === "eta") {
         return (
           new Date(a.estimatedDeliveryAt || "2999-01-01").getTime() -
@@ -123,21 +153,25 @@ const AdminOrders = ({
       }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [orders, query, sort, statusFilter]);
+  }, [dateRange, orders, paymentFilter, query, sort, statusFilter, statusView]);
 
-  const loadOrders = () => {
-    setLoading(true);
+  const loadOrders = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     const params = statusFilter?.length ? { status: statusFilter.join(",") } : {};
     getAdminOrders(params)
       .then(setOrders)
       .catch(() => notifyError("Could not load orders."))
-      .finally(() => setLoading(false));
-  };
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
+  }, [statusFilter]);
 
   useEffect(() => {
     document.title = `AutoCore Admin ${title}`;
     loadOrders();
-  }, [title]);
+    const interval = window.setInterval(() => loadOrders(true), 30000);
+    return () => window.clearInterval(interval);
+  }, [loadOrders, title]);
 
   const updateDraft = (orderNumber, field, value) => {
     setDrafts((current) => ({
@@ -292,6 +326,10 @@ const AdminOrders = ({
     );
   };
 
+  const shouldShowFulfillmentForm = (order) =>
+    order?.paymentStatus === "SUCCEEDED" &&
+    ["PAID", "PROCESSING", "READY_TO_DISPATCH", "SHIPPED"].includes(order.status);
+
   return (
     <section className="w-full py-4">
       <div className="mb-6 grid gap-4 xl:grid-cols-5">
@@ -343,7 +381,7 @@ const AdminOrders = ({
           </div>
         </div>
 
-        <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_180px]">
+        <div className="mb-5 grid gap-3 xl:grid-cols-[1fr_150px_170px_160px_180px]">
           <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
             <Search className="h-4 w-4 text-slate-400" />
             <input
@@ -354,11 +392,47 @@ const AdminOrders = ({
             />
           </label>
           <select
+            value={dateRange}
+            onChange={(event) => setDateRange(event.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+          >
+            <option value="all">All time</option>
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">This month</option>
+            <option value="year">This year</option>
+          </select>
+          <select
+            value={paymentFilter}
+            onChange={(event) => setPaymentFilter(event.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+          >
+            <option value="all">All payments</option>
+            <option value="PENDING">Payment pending</option>
+            <option value="SUCCEEDED">Payment received</option>
+            <option value="FAILED">Payment failed</option>
+            <option value="CANCELLED">Payment cancelled</option>
+          </select>
+          <select
+            value={statusView}
+            onChange={(event) => setStatusView(event.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+          >
+            <option value="all">All statuses</option>
+            <option value="PENDING_PAYMENT">New unpaid</option>
+            <option value="PAID">Paid</option>
+            <option value="PROCESSING">Processing</option>
+            <option value="READY_TO_DISPATCH">Ready</option>
+            <option value="SHIPPED">Shipped</option>
+            <option value="DELIVERED">Delivered</option>
+          </select>
+          <select
             value={sort}
             onChange={(event) => setSort(event.target.value)}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
           >
             <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
             <option value="value">Highest value</option>
             <option value="eta">ETA soonest</option>
           </select>
@@ -376,8 +450,8 @@ const AdminOrders = ({
             ))}
           </div>
         ) : visibleOrders.length ? (
-          <div className="overflow-hidden rounded-lg border border-slate-100">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-lg border border-slate-100">
+            <table className="min-w-[1120px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Order</th>
@@ -385,6 +459,7 @@ const AdminOrders = ({
                   <th className="px-4 py-3">Items</th>
                   <th className="px-4 py-3">Total</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Payment</th>
                   <th className="px-4 py-3">Next</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
@@ -418,6 +493,11 @@ const AdminOrders = ({
                     <td className="px-4 py-4">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${getStatusClass(order.status)}`}>
                         {formatStatus(order.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${getStatusClass(order.paymentStatus)}`}>
+                        {formatStatus(order.paymentStatus)}
                       </span>
                     </td>
                     <td className="px-4 py-4 text-sm font-semibold text-[#1572D3]">
@@ -490,7 +570,7 @@ const AdminOrders = ({
                     {selectedOrder.paymentStatus}
                   </span>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div>
                     <p className="text-xs font-bold uppercase text-slate-400">Customer</p>
                     <p className="mt-1 font-bold text-slate-950">
@@ -499,6 +579,9 @@ const AdminOrders = ({
                     <p className="text-sm text-slate-500">
                       {selectedOrder.customer?.email}
                     </p>
+                    <p className="text-sm text-slate-500">
+                      {selectedOrder.customer?.phone || "No phone saved"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-bold uppercase text-slate-400">Total</p>
@@ -506,56 +589,75 @@ const AdminOrders = ({
                       {formatCurrency(selectedOrder.total)}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase text-slate-400">Bought at</p>
+                    <p className="mt-1 font-bold text-slate-950">
+                      {formatDate(selectedOrder.placedAt || selectedOrder.createdAt)}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={drafts[selectedOrder.orderNumber]?.deliveryDays || ""}
-                  onChange={(event) =>
-                    updateDraft(selectedOrder.orderNumber, "deliveryDays", event.target.value)
-                  }
-                  placeholder="Delivery days"
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
-                />
-                <input
-                  value={drafts[selectedOrder.orderNumber]?.courierName || ""}
-                  onChange={(event) =>
-                    updateDraft(selectedOrder.orderNumber, "courierName", event.target.value)
-                  }
-                  placeholder="Courier name"
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
-                />
-                <input
-                  value={drafts[selectedOrder.orderNumber]?.trackingNumber || ""}
-                  onChange={(event) =>
-                    updateDraft(selectedOrder.orderNumber, "trackingNumber", event.target.value)
-                  }
-                  placeholder="Tracking number"
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
-                />
-                <input
-                  value={drafts[selectedOrder.orderNumber]?.trackingUrl || ""}
-                  onChange={(event) =>
-                    updateDraft(selectedOrder.orderNumber, "trackingUrl", event.target.value)
-                  }
-                  placeholder="Tracking URL"
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
-                />
-              </div>
-              <textarea
-                value={drafts[selectedOrder.orderNumber]?.note || ""}
-                onChange={(event) =>
-                  updateDraft(selectedOrder.orderNumber, "note", event.target.value)
-                }
-                placeholder="Dispatch notes"
-                rows={3}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
-              />
-              {renderActions(selectedOrder)}
+              {shouldShowFulfillmentForm(selectedOrder) && (
+                <div className="rounded-lg border border-slate-100 p-4">
+                  <h4 className="mb-3 text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+                    Fulfillment actions
+                  </h4>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      value={drafts[selectedOrder.orderNumber]?.deliveryDays || ""}
+                      onChange={(event) =>
+                        updateDraft(selectedOrder.orderNumber, "deliveryDays", event.target.value)
+                      }
+                      placeholder="Delivery days"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                    <input
+                      value={drafts[selectedOrder.orderNumber]?.courierName || ""}
+                      onChange={(event) =>
+                        updateDraft(selectedOrder.orderNumber, "courierName", event.target.value)
+                      }
+                      placeholder="Courier name"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                    <input
+                      value={drafts[selectedOrder.orderNumber]?.trackingNumber || ""}
+                      onChange={(event) =>
+                        updateDraft(selectedOrder.orderNumber, "trackingNumber", event.target.value)
+                      }
+                      placeholder="Tracking number"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                    <input
+                      value={drafts[selectedOrder.orderNumber]?.trackingUrl || ""}
+                      onChange={(event) =>
+                        updateDraft(selectedOrder.orderNumber, "trackingUrl", event.target.value)
+                      }
+                      placeholder="Tracking URL"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                    />
+                  </div>
+                  <textarea
+                    value={drafts[selectedOrder.orderNumber]?.note || ""}
+                    onChange={(event) =>
+                      updateDraft(selectedOrder.orderNumber, "note", event.target.value)
+                    }
+                    placeholder="Dispatch notes"
+                    rows={3}
+                    className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
+                  />
+                  <div className="mt-3">{renderActions(selectedOrder)}</div>
+                </div>
+              )}
+
+              {!shouldShowFulfillmentForm(selectedOrder) && (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                  This order is waiting for successful payment before fulfillment actions are available.
+                </div>
+              )}
 
               <div>
                 <h4 className="mb-3 text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -579,6 +681,50 @@ const AdminOrders = ({
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Customer and payment details
+                </h4>
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Shipping address</p>
+                    <p className="mt-1 font-bold text-slate-900">
+                      {selectedOrder.shippingAddress?.fullName || selectedOrder.customer?.name}
+                    </p>
+                    <p className="text-slate-500">
+                      {[
+                        selectedOrder.shippingAddress?.line1,
+                        selectedOrder.shippingAddress?.line2,
+                        selectedOrder.shippingAddress?.city,
+                        selectedOrder.shippingAddress?.country,
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || "No shipping address saved"}
+                    </p>
+                    <p className="text-slate-500">
+                      {selectedOrder.shippingAddress?.phone || selectedOrder.customer?.phone || "No phone saved"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Payment records</p>
+                    {(selectedOrder.payments || []).length ? (
+                      selectedOrder.payments.map((payment) => (
+                        <div key={payment.id} className="mt-2 border-t border-slate-200 pt-2 first:mt-0 first:border-t-0 first:pt-0">
+                          <p className="font-bold text-slate-900">
+                            {payment.provider} - {formatStatus(payment.status)}
+                          </p>
+                          <p className="text-slate-500">
+                            {formatCurrency(payment.amount)} - {formatDate(payment.createdAt)}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="mt-1 font-bold text-slate-900">No payment record yet</p>
+                    )}
+                  </div>
                 </div>
               </div>
 

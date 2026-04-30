@@ -43,7 +43,6 @@ const RelatedCard = ({ product }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const wishItems = useSelector((state) => state.wishlist?.items || []);
-  const user = useSelector((state) => state.app?.user);
   const isWished = wishItems.some((wishItem) => wishItem.id === item.id);
   const discount = getDiscount(item);
 

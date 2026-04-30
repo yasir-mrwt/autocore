@@ -159,6 +159,85 @@ const getProductOrderBy = (sort) => {
   return { reviewCount: "desc" };
 };
 
+const getDiscountPercent = (product) => {
+  const price = Number(product.price || 0);
+  const originalPrice = Number(product.originalPrice || 0);
+  if (!originalPrice || originalPrice <= price) return 0;
+  return ((originalPrice - price) / originalPrice) * 100;
+};
+
+const listProductsWithComputedSort = async (prisma, { where, sort, skip, limit }) => {
+  const products = await prisma.product.findMany({
+    where,
+    include: productInclude,
+  });
+
+  if (sort === "discount") {
+    const sortedProducts = products.sort((a, b) => {
+      const discountDiff = getDiscountPercent(b) - getDiscountPercent(a);
+      if (discountDiff) return discountDiff;
+      const ratingDiff = Number(b.averageRating || 0) - Number(a.averageRating || 0);
+      if (ratingDiff) return ratingDiff;
+      return Number(b.reviewCount || 0) - Number(a.reviewCount || 0);
+    });
+
+    return {
+      total: sortedProducts.length,
+      products: sortedProducts.slice(skip, skip + limit),
+    };
+  }
+
+  if (sort === "sales") {
+    const productIds = products.map((product) => product.id);
+    if (!productIds.length) {
+      return { total: 0, products: [] };
+    }
+
+    const salesRows = await prisma.orderItem.groupBy({
+      by: ["productId"],
+      where: {
+        productId: { in: productIds },
+        order: { paymentStatus: "SUCCEEDED" },
+      },
+      _sum: {
+        quantity: true,
+        lineTotal: true,
+      },
+    });
+
+    const salesByProductId = new Map(
+      salesRows
+        .filter((row) => row.productId)
+        .map((row) => [
+          row.productId,
+          {
+            quantity: Number(row._sum.quantity || 0),
+            revenue: Number(row._sum.lineTotal || 0),
+          },
+        ])
+    );
+
+    const sortedProducts = products
+      .filter((product) => salesByProductId.has(product.id))
+      .sort((a, b) => {
+        const aSales = salesByProductId.get(a.id);
+        const bSales = salesByProductId.get(b.id);
+        const quantityDiff = bSales.quantity - aSales.quantity;
+        if (quantityDiff) return quantityDiff;
+        const revenueDiff = bSales.revenue - aSales.revenue;
+        if (revenueDiff) return revenueDiff;
+        return Number(b.reviewCount || 0) - Number(a.reviewCount || 0);
+      });
+
+    return {
+      total: sortedProducts.length,
+      products: sortedProducts.slice(skip, skip + limit),
+    };
+  }
+
+  return { total: products.length, products: products.slice(skip, skip + limit) };
+};
+
 const slugify = (value) =>
   String(value || "product")
     .toLowerCase()
@@ -259,14 +338,17 @@ const buildProductData = async (prisma, payload, existingProduct = null) => {
 };
 
 const replaceProductImages = async (tx, productId, payload) => {
+  const hasImageUpdate = payload.image !== undefined || payload.images !== undefined;
+  if (!hasImageUpdate) return;
+
   const imageList = [
     ...(payload.image ? [payload.image] : []),
     ...((payload.images || []).filter(Boolean)),
   ].filter((value, index, array) => array.indexOf(value) === index);
 
+  await tx.productImage.deleteMany({ where: { productId } });
   if (!imageList.length) return;
 
-  await tx.productImage.deleteMany({ where: { productId } });
   await tx.productImage.createMany({
     data: imageList.map((imageUrl, index) => ({
       productId,
@@ -311,6 +393,50 @@ const upsertInventory = (tx, productId, payload) => {
         ? { warehouseLocation: cleanNullableString(payload.warehouseLocation) }
         : {}),
     },
+  });
+};
+
+const cleanCompatibilityId = (value) => {
+  const cleaned = cleanNullableString(value);
+  return cleaned || undefined;
+};
+
+const replaceProductCompatibilities = async (tx, productId, payload) => {
+  if (!Array.isArray(payload.compatibilities)) return;
+
+  const compatibilities = payload.compatibilities
+    .map((item) => ({
+      brandId: cleanCompatibilityId(item.brandId),
+      modelId: cleanCompatibilityId(item.modelId),
+      engineId: cleanCompatibilityId(item.engineId),
+      yearFrom:
+        item.yearFrom === "" || item.yearFrom === null || item.yearFrom === undefined
+          ? null
+          : Number(item.yearFrom),
+      yearTo:
+        item.yearTo === "" || item.yearTo === null || item.yearTo === undefined
+          ? null
+          : Number(item.yearTo),
+      engineType: cleanNullableString(item.engineType),
+      notes: cleanNullableString(item.notes),
+    }))
+    .filter((item) => item.brandId);
+
+  await tx.productCompatibility.deleteMany({ where: { productId } });
+
+  if (!compatibilities.length) return;
+
+  await tx.productCompatibility.createMany({
+    data: compatibilities.map((item) => ({
+      productId,
+      brandId: item.brandId,
+      modelId: item.modelId || null,
+      engineId: item.engineId || null,
+      yearFrom: item.yearFrom,
+      yearTo: item.yearTo,
+      engineType: item.engineType,
+      notes: item.notes,
+    })),
   });
 };
 
@@ -420,6 +546,7 @@ const createAdminProduct = async (req, res, next) => {
 
       await replaceProductImages(tx, created.id, req.body);
       await upsertInventory(tx, created.id, req.body);
+      await replaceProductCompatibilities(tx, created.id, req.body);
       await createCatalogAuditLog(tx, {
         adminId: req.user.id,
         action: "PRODUCT_CREATED",
@@ -474,6 +601,7 @@ const updateAdminProduct = async (req, res, next) => {
 
       await replaceProductImages(tx, updated.id, req.body);
       await upsertInventory(tx, updated.id, req.body);
+      await replaceProductCompatibilities(tx, updated.id, req.body);
       await createCatalogAuditLog(tx, {
         adminId: req.user.id,
         action: "PRODUCT_UPDATED",
@@ -544,6 +672,28 @@ const listProducts = async (req, res, next) => {
     const limit = Math.min(parsePositiveInt(req.query.limit, 12), 48);
     const skip = (page - 1) * limit;
     const where = buildProductWhere(req.query);
+    const usesComputedSort = ["discount", "sales"].includes(req.query.sort);
+
+    if (usesComputedSort) {
+      const { total, products } = await listProductsWithComputedSort(prisma, {
+        where,
+        sort: req.query.sort,
+        skip,
+        limit,
+      });
+
+      return res.status(200).json({
+        products: products.map(formatProduct),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasMore: skip + products.length < total,
+        },
+      });
+    }
+
     const orderBy = getProductOrderBy(req.query.sort);
 
     const [total, products] = await Promise.all([
@@ -629,6 +779,22 @@ const getRelatedProducts = async (req, res, next) => {
       take: limit,
       include: productInclude,
     });
+
+    if (related.length < limit) {
+      const fallback = await prisma.product.findMany({
+        where: {
+          id: { notIn: [product.id, ...related.map((item) => item.id)] },
+          status: "ACTIVE",
+        },
+        orderBy: [{ reviewCount: "desc" }, { averageRating: "desc" }],
+        take: limit - related.length,
+        include: productInclude,
+      });
+
+      return res.status(200).json({
+        products: [...related, ...fallback].map(formatProduct),
+      });
+    }
 
     return res.status(200).json({ products: related.map(formatProduct) });
   } catch (error) {

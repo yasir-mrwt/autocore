@@ -188,3 +188,14 @@ export const createStripeCheckoutSession = async (orderId) => {
   );
   return data;
 };
+
+export const syncStripeCheckoutSession = async ({ orderId, sessionId }) => {
+  const { data } = await catalogClient.post(
+    `/commerce/orders/${orderId}/sync-stripe-session`,
+    { sessionId }
+  );
+  return {
+    ...data,
+    cart: normalizeCart(data.cart),
+  };
+};

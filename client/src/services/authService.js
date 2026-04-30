@@ -74,6 +74,28 @@ export const changePassword = async (
   return data;
 };
 
+export const requestPasswordReset = async (email) => {
+  const { data } = await catalogClient.post("/auth/password-reset/request", {
+    email,
+  });
+  return data;
+};
+
+export const confirmPasswordReset = async ({
+  email,
+  otp,
+  newPassword,
+  confirmPassword,
+}) => {
+  const { data } = await catalogClient.post("/auth/password-reset/confirm", {
+    email,
+    otp,
+    newPassword,
+    confirmPassword,
+  });
+  return data;
+};
+
 export const customerLogout = async (role = "Buyer") => {
   const endpoint = role === "Admin" ? "/auth/admin/logout" : "/auth/logout";
   const { data } = await catalogClient.post(endpoint, {}, { authRole: role });

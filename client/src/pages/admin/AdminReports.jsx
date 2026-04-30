@@ -234,8 +234,8 @@ const AdminReports = () => {
 
       <div className="mt-6 rounded-lg bg-white p-5 shadow-sm">
         <h3 className="text-lg font-bold text-[#2B3674]">Product performance</h3>
-        <div className="mt-4 overflow-hidden rounded-lg border border-slate-100">
-          <table className="w-full text-left text-sm">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-100">
+          <table className="min-w-[780px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Product</th>

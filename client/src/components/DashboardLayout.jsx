@@ -163,6 +163,10 @@ const DashboardLayout = ({ children }) => {
   };
 
   const unreadCount = notifications.length;
+  const dismissNotification = (id) => {
+    setNotifications((current) => current.filter((item) => item.id !== id));
+  };
+  const clearNotifications = () => setNotifications([]);
 
   const Sidebar = () => (
     <aside className="flex h-full flex-col bg-white">
@@ -323,9 +327,20 @@ const DashboardLayout = ({ children }) => {
               <p className="text-sm font-bold text-slate-950">Admin activity</p>
               <p className="text-xs text-slate-500">Latest operational signals</p>
             </div>
-            <span className="rounded-full bg-[#E8F1FB] px-2 py-1 text-xs font-bold text-[#1572D3]">
-              {unreadCount}
-            </span>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearNotifications}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-50"
+                >
+                  Clear all
+                </button>
+              )}
+              <span className="rounded-full bg-[#E8F1FB] px-2 py-1 text-xs font-bold text-[#1572D3]">
+                {unreadCount}
+              </span>
+            </div>
           </div>
           <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
             {notifications.length ? (
@@ -333,12 +348,20 @@ const DashboardLayout = ({ children }) => {
                 <div key={item.id} className="rounded-lg border border-slate-100 p-3">
                   <div className="flex items-start gap-3">
                     <span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone}`} />
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-slate-900">{item.title}</p>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
                         {item.copy}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => dismissNotification(item.id)}
+                      className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Dismiss notification"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))

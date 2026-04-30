@@ -30,9 +30,31 @@ const changePasswordValidator = [
     .withMessage("New password must be at least 8 characters long."),
 ];
 
+const requestPasswordResetValidator = [
+  body("email").trim().isEmail().normalizeEmail().withMessage("Valid email is required."),
+];
+
+const confirmPasswordResetValidator = [
+  body("email").trim().isEmail().normalizeEmail().withMessage("Valid email is required."),
+  body("otp")
+    .trim()
+    .isLength({ min: 6, max: 6 })
+    .withMessage("A valid 6 digit OTP is required."),
+  body("newPassword")
+    .isString()
+    .isLength({ min: 8 })
+    .withMessage("New password must be at least 8 characters long."),
+  body("confirmPassword")
+    .isString()
+    .custom((value, { req }) => value === req.body.newPassword)
+    .withMessage("Confirm password must match new password."),
+];
+
 module.exports = {
+  confirmPasswordResetValidator,
   registerValidator,
   loginValidator,
+  requestPasswordResetValidator,
   updateProfileValidator,
   changePasswordValidator,
 };

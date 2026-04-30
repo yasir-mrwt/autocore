@@ -113,5 +113,9 @@ router.post(
   "/orders/:orderId/checkout-session",
   CommerceController.createStripeCheckoutSession
 );
+router.post(
+  "/orders/:orderId/sync-stripe-session",
+  CommerceController.syncStripeCheckoutSession
+);
 
 module.exports = router;
