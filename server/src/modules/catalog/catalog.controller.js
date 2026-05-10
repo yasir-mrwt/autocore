@@ -51,6 +51,14 @@ const parsePositiveInt = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const tokenizeSearchTerm = (value) =>
+  String(value || "")
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
 const buildProductWhere = (query) => {
   const {
     keyword,
@@ -72,12 +80,15 @@ const buildProductWhere = (query) => {
   };
 
   if (term) {
-    where.OR = [
-      { name: { contains: term, mode: "insensitive" } },
-      { sku: { contains: term, mode: "insensitive" } },
-      { partNumber: { contains: term, mode: "insensitive" } },
-      { shortDescription: { contains: term, mode: "insensitive" } },
-    ];
+    const tokens = tokenizeSearchTerm(term);
+    where.AND = tokens.map((token) => ({
+      OR: [
+        { name: { contains: token, mode: "insensitive" } },
+        { sku: { contains: token, mode: "insensitive" } },
+        { partNumber: { contains: token, mode: "insensitive" } },
+        { shortDescription: { contains: token, mode: "insensitive" } },
+      ],
+    }));
   }
 
   if (category) {

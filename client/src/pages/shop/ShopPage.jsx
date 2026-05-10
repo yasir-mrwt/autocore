@@ -322,6 +322,7 @@ export default function ShopPage() {
   const [error, setError] = useState("");
 
   const [keyword, setKeyword] = useState(params.get("keyword") || "");
+  const [categorySearch, setCategorySearch] = useState("");
   const [selCats, setSelCats] = useState(() =>
     params.get("category") ? [params.get("category")] : []
   );
@@ -482,6 +483,13 @@ export default function ShopPage() {
       ),
     [engines]
   );
+  const filteredCategories = useMemo(() => {
+    const term = categorySearch.trim().toLowerCase();
+    if (!term) return categories;
+    return categories.filter((category) =>
+      String(category.name || "").toLowerCase().includes(term)
+    );
+  }, [categories, categorySearch]);
 
   useEffect(() => {
     let active = true;
@@ -633,6 +641,7 @@ export default function ShopPage() {
   };
   const clearAll = () => {
     setKeyword("");
+    setCategorySearch("");
     setSelCats([]);
     setSelMakes([]);
     setSelModels([]);
@@ -649,18 +658,21 @@ export default function ShopPage() {
       <div className="sticky top-0 z-10 bg-white pb-3">
         <div className="pb-3">
           <h3 className="mb-2 text-xs font-medium uppercase tracking-[0.28em] text-slate-700">
-            Search Parts
+            Search Categories
           </h3>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="Part name or number..."
+              value={categorySearch}
+              onChange={(event) => setCategorySearch(event.target.value)}
+              placeholder="Filter categories..."
               className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1572D3]"
             />
           </div>
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            This filters the category list only.
+          </p>
         </div>
 
         <div className="border-y border-slate-100 py-3">
@@ -671,7 +683,7 @@ export default function ShopPage() {
             {filterLoading && (
               <p className="text-sm text-slate-400">Loading categories...</p>
             )}
-            {categories.map((category) => (
+            {filteredCategories.map((category) => (
               <label
                 key={category.id || category.name}
                 className="group flex cursor-pointer items-center gap-2.5"
@@ -690,6 +702,9 @@ export default function ShopPage() {
                 </span>
               </label>
             ))}
+            {!filterLoading && filteredCategories.length === 0 && (
+              <p className="text-sm text-slate-400">No categories found.</p>
+            )}
           </div>
         </div>
       </div>
@@ -914,7 +929,7 @@ export default function ShopPage() {
 
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <label className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
-                  Search catalog
+                  Search products
                 </label>
                 <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
                   <Search className="h-4 w-4 text-[#1572D3]" />
@@ -922,7 +937,7 @@ export default function ShopPage() {
                     type="text"
                     value={keyword}
                     onChange={(event) => setKeyword(event.target.value)}
-                    placeholder="Search by part name, SKU, or category"
+                    placeholder="Part name, SKU, or part number"
                     className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none"
                   />
                   {keyword && (
@@ -936,6 +951,9 @@ export default function ShopPage() {
                     </button>
                   )}
                 </div>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Product search supports multiple words from the same product name.
+                </p>
               </div>
             </div>
 
