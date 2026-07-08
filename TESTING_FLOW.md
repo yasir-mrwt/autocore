@@ -93,11 +93,12 @@ Run:
 ```bash
 npm run build
 npm run db:validate
+npm test
 ```
 
-Expected result: frontend production build succeeds and Prisma schema validates.
+Expected result: frontend production build succeeds, Prisma schema validates, and the backend smoke test passes.
 
-There is currently no automated test suite in the server or client package.
+The current automated test coverage is intentionally small: it verifies the server app imports without binding a port and the Node 26-safe token helper signs, verifies, and rejects tampered tokens.
 
 ## 5. Customer Flow
 

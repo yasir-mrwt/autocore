@@ -8,6 +8,7 @@
     "dev:client": "npm --prefix client run dev",
     "dev:server": "npm --prefix server run dev",
     "build": "npm --prefix client run build",
-    "db:validate": "npm --prefix server run db:validate"
+    "db:validate": "npm --prefix server run db:validate",
+    "test": "npm --prefix server test"
   }
 }

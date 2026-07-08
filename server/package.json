@@ -14,7 +14,7 @@
     "seed:catalog": "node scripts/seedCatalog.js",
     "import:auto-parts": "node scripts/importAutoPartsSeedData.js",
     "dedupe:product-images": "node scripts/dedupeProductImages.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node scripts/smokeTest.js"
   },
   "author": "Scintillate",
   "license": "ISC",
@@ -32,10 +32,13 @@
     "morgan": "^1.10.0",
     "nodemailer": "^9.0.3",
     "pg": "^8.20.0",
-    "prisma": "^7.7.0",
     "stripe": "^14.23.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3"
+    "nodemon": "^3.0.3",
+    "prisma": "^7.8.0"
+  },
+  "overrides": {
+    "@hono/node-server": "^1.19.13"
   }
 }

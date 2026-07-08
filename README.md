@@ -118,9 +118,10 @@ DB check: http://localhost:8000/api/v1/health/db
 ```bash
 npm run build
 npm run db:validate
+npm test
 ```
 
-The server currently has no automated test suite. Use `TESTING_FLOW.md` for manual QA coverage.
+The current automated coverage is a backend smoke test for app import and token signing/verification. Use `TESTING_FLOW.md` for the full manual QA flow.
 
 ## Main API Areas
 
