@@ -1,180 +1,40 @@
 # AutoCore
 
-AutoCore is a full-stack auto spare parts e-commerce platform. It includes a customer storefront, product catalog, cart and wishlist overlays, Stripe checkout, order tracking, reviews, and a professional admin panel for order fulfillment and catalog management.
-
-The project is currently demo-ready. Some production items, such as real scraped product imports, production email delivery, scheduled jobs, and automated tests, are listed near the end of this file.
+AutoCore is a full-stack auto spare parts commerce project. It includes a React storefront, customer cart and wishlist flows, Stripe checkout, order tracking, product reviews, and an admin panel for catalog and order lifecycle management.
 
 ## Project Structure
 
 ```txt
 carspareparts/
   client/   React + Vite frontend
-  server/   Node.js + Express + PostgreSQL API
+  server/   Node.js + Express + Prisma API
 ```
-
-## Main Tech Used
-
-Frontend:
-- React 18
-- Vite
-- React Router
-- Redux Toolkit
-- Tailwind CSS
-- MUI Tooltip
-- Lucide React icons
-- Axios
-- React Toastify
-- Stripe frontend SDK
-
-Backend:
-- Node.js
-- Express.js
-- PostgreSQL
-- Supabase PostgreSQL compatible setup
-- Prisma ORM
-- JWT authentication
-- bcrypt password hashing
-- Stripe checkout and webhook support
-- express-validator
-- CORS and cookie-based refresh handling
-
-Database:
-- PostgreSQL
-- Prisma schema and migrations
-- Supabase can be used as the hosted PostgreSQL provider
-
-## Features Included
-
-Customer side:
-- Home page
-- Shop page
-- Product details page
-- Product image viewer
-- Product reviews
-- Wishlist overlay
-- Cart overlay
-- Stripe checkout flow
-- User order history and tracking
-- Recently viewed products
-- Profile overlay
-- Profile update
-- Password change
-- Session handling separated by browser tab
-
-Admin side:
-- Admin login
-- Separate admin and customer authentication state
-- Fixed desktop sidebar
-- Mobile collapsible admin sidebar
-- Admin dashboard
-- Orders table
-- Pending orders
-- Ready for dispatch
-- Shipped orders
-- Delivery confirmation page
-- Analytics / reports
-- Products page
-- Product create/update/archive API integration
-- Customers page
-- Settings page
-- Admin activity dropdown
-- Order lifecycle actions
-
-Order lifecycle:
-- Paid / new order
-- Prepare dispatch
-- Ready for dispatch
-- Add shipment details
-- Ship now
-- Delivery confirmation pending
-- Delivered
 
 ## Requirements
 
-Install these before running the project:
-- Node.js 18 or newer
+- Node.js 26.0.0 or newer in the Node 26 line
 - npm
-- PostgreSQL database or Supabase project
-- Stripe test account if testing payments
+- PostgreSQL database, local or hosted by Supabase
+- Stripe test account for checkout testing
+- Optional Cloudinary account for admin image uploads
+- Optional SMTP account for password reset and delivery emails
 
-## First Time Setup
+## Install
 
-Open a terminal in the project root:
-
-```bash
-cd "carspareparts"
-```
-
-Install frontend dependencies:
+From the project root:
 
 ```bash
-cd client
-npm install
+npm --prefix client install
+npm --prefix server install
 ```
 
-Install backend dependencies:
+## Environment
+
+Create local env files from the examples:
 
 ```bash
-cd server
-npm install
-```
-
-## Environment Setup
-
-Create a `.env` file inside `server/`.
-
-You can start from:
-
-```bash
-server/.env.example
-```
-
-Important backend variables:
-
-```env
-NODE_ENV=development
-PORT=8000
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
-DIRECT_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
-
-ACCESS_TOKEN_SECRET="replace-with-a-long-random-string"
-REFRESH_TOKEN_SECRET="replace-with-a-long-random-string"
-ACCESS_TOKEN_EXPIRES_IN="15m"
-REFRESH_TOKEN_DAYS=30
-REFRESH_COOKIE_NAME="autocore_refresh"
-AUTH_COOKIE_SAMESITE="lax"
-AUTH_COOKIE_SECURE=false
-PASSWORD_SALT_ROUNDS=12
-
-ADMIN_NAME="AutoCore Admin"
-ADMIN_EMAIL="admin@autocore.local"
-ADMIN_PASSWORD="change-this-admin-password"
-
-CLIENT_URL="http://localhost:5173"
-STRIPE_SECRET_KEY=""
-STRIPE_WEBHOOK_SECRET=""
-STRIPE_CURRENCY="pkr"
-
-CLOUDINARY_CLOUD_NAME=""
-CLOUDINARY_API_KEY=""
-CLOUDINARY_API_SECRET=""
-CLOUDINARY_UPLOAD_FOLDER="autocore/products"
-
-SMTP_HOST="smtp.gmail.com"
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=""
-SMTP_PASS=""
-EMAIL_FROM=""
-EMAIL_FROM_NAME="AutoCore"
-```
-
-Create a `.env` file inside `client/`.
-
-You can start from:
-
-```bash
-client/.env.example
+cp client/.env.example client/.env
+cp server/.env.example server/.env
 ```
 
 Frontend variables:
@@ -184,122 +44,106 @@ VITE_API_BASE_URL=http://localhost:8000/api/v1
 VITE_SOCKET_URL=http://localhost:8000
 ```
 
-Do not commit real `.env` files. Commit only `.env.example`.
+Backend variables:
 
-## Database Setup
-
-From the backend folder:
-
-```bash
-cd server
-npx prisma generate
-npx prisma migrate deploy
+```env
+NODE_ENV=development
+PORT=8000
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+DIRECT_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+ACCESS_TOKEN_SECRET="replace-with-a-long-random-string"
+ACCESS_TOKEN_EXPIRES_IN="15m"
+REFRESH_TOKEN_DAYS=30
+CLIENT_URL="http://localhost:5173"
+CLIENT_ORIGIN="http://localhost:5173,http://localhost:5174"
+STRIPE_SECRET_KEY=""
+STRIPE_WEBHOOK_SECRET=""
+STRIPE_CURRENCY="pkr"
 ```
 
-For local development with a local PostgreSQL database, you can use:
+Do not commit real `.env` files.
+
+## Database
+
+Validate the Prisma schema:
 
 ```bash
-npx prisma migrate dev
+npm --prefix server run db:validate
 ```
 
-To inspect the database visually:
+Run migrations:
 
 ```bash
-npm run prisma:studio
+npm --prefix server run prisma:migrate
 ```
 
-## Seed Demo Data
-
-Create an admin user:
+Create the admin account:
 
 ```bash
-cd server
-npm run seed:admin
+npm --prefix server run seed:admin
 ```
 
-Import the full generated auto-parts dataset. This is the source used by the customer storefront and admin catalog:
+Import generated auto-parts data when available:
 
 ```bash
-cd server
-npm run import:auto-parts -- "C:\Users\Laptop Valley\Downloads\auto_parts_seed_data.json"
+npm --prefix server run import:auto-parts -- "/path/to/auto_parts_seed_data.json"
 ```
 
-Make sure `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `DATABASE_URL` are set before running seed scripts.
-Imported demo users use `Demo@12345` by default unless `DEMO_IMPORT_PASSWORD` is set.
-The old static catalog seeder has been disabled so placeholder products are not reintroduced.
+## Development
 
-## Running The Project
-
-Start the backend first:
+Start frontend and backend together:
 
 ```bash
-cd server
 npm run dev
 ```
 
-The backend should run on:
-
-```txt
-http://localhost:8000
-```
-
-Health check:
-
-```txt
-http://localhost:8000/api/v1/health
-```
-
-Start the frontend in a second terminal:
+Or run them separately:
 
 ```bash
-cd client
-npm run dev
+npm run dev:server
+npm run dev:client
 ```
 
-The frontend should run on:
+Default URLs:
 
 ```txt
-http://localhost:5173
+Frontend: http://localhost:5173
+API:      http://localhost:8000/api/v1
+Health:   http://localhost:8000/api/v1/health
+DB check: http://localhost:8000/api/v1/health/db
 ```
 
-## Useful URLs
+## Build And Validation
 
-Customer:
-
-```txt
-http://localhost:5173/
-http://localhost:5173/shop
-http://localhost:5173/sign-in
-http://localhost:5173/sign-up
-http://localhost:5173/buyer/watch-list
+```bash
+npm run build
+npm run db:validate
 ```
 
-Admin:
+The server currently has no automated test suite. Use `TESTING_FLOW.md` for manual QA coverage.
 
-```txt
-http://localhost:5173/admin/login
-http://localhost:5173/admin/overview
-http://localhost:5173/admin/orders
-http://localhost:5173/admin/products
-http://localhost:5173/admin/customers
-http://localhost:5173/admin/analytics
-http://localhost:5173/admin/settings
-```
+## Main API Areas
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/admin/login`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/catalog/products`
+- `GET /api/v1/catalog/products/:idOrSlug`
+- `GET /api/v1/commerce/cart`
+- `POST /api/v1/commerce/orders`
+- `POST /api/v1/commerce/orders/:orderId/checkout-session`
+- `GET /api/v1/commerce/admin/orders`
+- `POST /api/v1/commerce/admin/orders/:orderId/prepare-dispatch`
+- `POST /api/v1/commerce/admin/orders/:orderId/ship`
 
 ## Stripe Test Flow
 
-1. Add products to cart.
-2. Open cart overlay.
-3. Fill checkout/shipping details.
-4. Create order.
-5. Continue to Stripe checkout.
-6. Use Stripe test card:
-
-```txt
-4242 4242 4242 4242
-Any future expiry
-Any CVC
-```
+1. Add products to the cart.
+2. Create an order.
+3. Continue to Stripe checkout.
+4. Use card `4242 4242 4242 4242`, any future expiry, and any CVC.
+5. Return to the shop page and confirm the order is marked paid.
 
 For local webhooks:
 
@@ -307,87 +151,25 @@ For local webhooks:
 stripe listen --forward-to localhost:8000/api/v1/commerce/stripe/webhook
 ```
 
-Then set the generated webhook secret in:
+Set the generated value in `STRIPE_WEBHOOK_SECRET`.
 
-```env
-STRIPE_WEBHOOK_SECRET="whsec_..."
-```
+## Node 26 Compatibility
 
-## Authentication Notes
+The backend no longer uses `jsonwebtoken` because its transitive dependency chain loads `buffer.SlowBuffer`, which is removed in Node.js 26. Access tokens are now signed and verified with Node's built-in `crypto` module using HS256, so the active runtime path does not depend on the removed API.
 
-AutoCore uses separate customer and admin sessions.
+## Troubleshooting
 
-Customer and admin auth are intentionally separated:
-- separate storage keys
-- separate refresh cookies
-- separate route guards
-- separate Redux auth state
+- `DATABASE_URL or DIRECT_URL is required`: set `DATABASE_URL` in `server/.env`.
+- `ACCESS_TOKEN_SECRET is required`: set a long random value in `server/.env`.
+- `Stripe is not configured`: set `STRIPE_SECRET_KEY` before testing checkout.
+- `Cloudinary is not configured`: set Cloudinary variables before uploading admin product images.
+- `SMTP is not configured`: set SMTP variables before password reset or delivery confirmation email tests.
+- CORS failures: make sure `CLIENT_ORIGIN` includes the frontend origin exactly.
+- Empty catalog: run migrations and import/seed catalog data.
 
-Frontend access tokens use role-specific `localStorage` keys so a valid customer or admin session is restored across normal browser tabs. Login/logout changes are synchronized between open tabs, while customer and admin sessions still remain separate.
+## Production Handover Notes
 
-Password change revokes refresh sessions and sends the user back to sign in.
-
-## Admin Demo Flow
-
-1. Login at `/admin/login`.
-2. Open Dashboard and review summary cards.
-3. Open Products.
-4. Create or manage a product.
-5. Open Orders.
-6. Prepare dispatch for a paid order.
-7. Add courier, tracking number, and delivery estimate.
-8. Ship the order.
-9. Send delivery confirmation.
-10. Mark delivered if needed for demo.
-
-## Customer Demo Flow
-
-1. Browse home page.
-2. Open Shop.
-3. Filter or search products.
-4. Open product detail page.
-5. Add to wishlist.
-6. Add to cart.
-7. Checkout with Stripe test card.
-8. Open Activity / Orders.
-9. Track order status.
-10. Confirm delivery when available.
-
-## Build Check
-
-Frontend production build:
-
-```bash
-cd client
-npm run build
-```
-
-Backend validation:
-
-```bash
-cd server
-npm run db:validate
-```
-
-## What Is Left For Production Handover
-
-The current project is good for a polished demo. These items should be completed before final production handover:
-
-- Real scraped product data import pipeline.
-- Cloudinary account configuration in production environment variables.
-- SMTP account/app-password configuration in production environment variables.
-- Scheduled job or queue for sending delivery confirmation after 2 days.
-- Production Stripe keys.
-- Production webhook deployment and payment reconciliation checks.
-- Admin notification polling or real-time updates.
-- Full mobile and desktop QA pass.
-- Checkout, auth, order lifecycle, and deployment QA.
-- Final deployment documentation.
-- Automated tests for auth, checkout, orders, admin actions, and catalog CRUD.
-- Optional email verification flow for changing customer email.
-<<<<<<< HEAD
-
-
-
-=======
->>>>>>> 0b3fdb8 (shopping flow completed along with data putting data loading real time account setting and all things, final refinements still needed)
+- Configure production PostgreSQL, Stripe, Cloudinary, and SMTP secrets.
+- Add automated tests for auth, cart, checkout, order lifecycle, catalog CRUD, and admin actions.
+- Add inventory reservation or transaction-level stock checks before high-traffic production checkout.
+- Add scheduled delivery-confirmation email jobs if reminders must be automatic.
