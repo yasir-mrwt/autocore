@@ -5,6 +5,18 @@ const cors = require("cors");
 
 const app = express();
 app.set("trust proxy", 1);
+
+const getAllowedOrigins = () => {
+  const configuredOrigins = process.env.CLIENT_ORIGIN || process.env.CLIENT_URL;
+  if (!configuredOrigins) {
+    return ["http://localhost:5173", "http://localhost:5174"];
+  }
+
+  return configuredOrigins
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+};
 //file upload
 const fileUpload = require("express-fileupload");
 app.use(fileUpload());
@@ -23,7 +35,7 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || ["http://localhost:5173", "http://localhost:5174"],
+    origin: getAllowedOrigins(),
     credentials: true,
   })
 );
@@ -40,6 +52,13 @@ app.all("*", (req, res, next) => {
 app.use(generatedError);
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`Listening on ${PORT}`);
-});
+const startServer = () =>
+  app.listen(PORT, () => {
+    console.log(`Listening on ${PORT}`);
+  });
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;

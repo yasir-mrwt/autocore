@@ -1,5 +1,5 @@
-const jwt = require("jsonwebtoken");
 const { getPrisma } = require("../config/prisma");
+const { verifyAccessToken } = require("../utils/authTokens");
 
 const getBearerToken = (req) => {
   const authHeader = req.headers.authorization || "";
@@ -15,7 +15,7 @@ const requireAuth = async (req, res, next) => {
       return res.status(401).json({ message: "Authentication required." });
     }
 
-    const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    const payload = verifyAccessToken(token);
     const user = await getPrisma().user.findUnique({
       where: { id: payload.sub },
       select: {
