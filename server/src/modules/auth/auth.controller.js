@@ -28,7 +28,40 @@ const selectSafeUser = {
   emailVerifiedAt: true,
   createdAt: true,
   updatedAt: true,
+  addresses: {
+    where: { isDefault: true },
+    orderBy: { updatedAt: "desc" },
+    take: 1,
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      line1: true,
+      line2: true,
+      city: true,
+      state: true,
+      postalCode: true,
+      country: true,
+      isDefault: true,
+    },
+  },
 };
+
+const formatAddress = (address) =>
+  address
+    ? {
+        id: address.id,
+        fullName: address.fullName,
+        phone: address.phone,
+        line1: address.line1,
+        line2: address.line2,
+        city: address.city,
+        state: address.state,
+        postalCode: address.postalCode,
+        country: address.country,
+        isDefault: address.isDefault,
+      }
+    : null;
 
 const formatUser = (user) => ({
   id: user.id,
@@ -38,6 +71,7 @@ const formatUser = (user) => ({
   role: user.role,
   status: user.status,
   emailVerifiedAt: user.emailVerifiedAt,
+  defaultShippingAddress: formatAddress(user.addresses?.[0]),
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -233,10 +267,24 @@ const logoutWithRole = (requiredRole = "CUSTOMER") => async (req, res, next) => 
   }
 };
 
-const me = async (req, res) =>
-  res.status(200).json({
-    user: formatUser(req.user),
-  });
+const me = async (req, res, next) => {
+  try {
+    const user = await getPrisma().user.findUnique({
+      where: { id: req.user.id },
+      select: selectSafeUser,
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    return res.status(200).json({
+      user: formatUser(user),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
 
 const updateProfile = async (req, res, next) => {
   try {
@@ -397,7 +445,7 @@ const confirmPasswordReset = async (req, res, next) => {
 module.exports = {
   confirmPasswordReset,
   register,
-  login: loginWithRole(),
+  login: loginWithRole("CUSTOMER"),
   adminLogin: loginWithRole("ADMIN"),
   refresh: refreshWithRole("CUSTOMER"),
   adminRefresh: refreshWithRole("ADMIN"),

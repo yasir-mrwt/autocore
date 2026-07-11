@@ -40,7 +40,18 @@ const main = async () => {
     },
   });
 
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId: admin.id,
+      revokedAt: null,
+    },
+    data: {
+      revokedAt: new Date(),
+    },
+  });
+
   console.log("Admin user ready:", admin);
+  console.log("Existing admin refresh sessions revoked. Sign in again with ADMIN_EMAIL and ADMIN_PASSWORD.");
 };
 
 main()

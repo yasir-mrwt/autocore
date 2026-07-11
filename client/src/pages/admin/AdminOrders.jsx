@@ -34,6 +34,19 @@ const formatDate = (value) =>
 
 const formatStatus = (value) => String(value || "").replaceAll("_", " ");
 
+const PAKISTAN_COURIERS = [
+  "TCS",
+  "Leopards Courier",
+  "M&P Courier",
+  "Trax",
+  "Call Courier",
+  "BlueEx",
+  "PostEx",
+  "Pakistan Post",
+  "DHL Pakistan",
+  "FedEx Pakistan",
+];
+
 const downloadCsv = (filename, rows) => {
   const csv = rows
     .map((row) =>
@@ -220,9 +233,9 @@ const AdminOrders = ({
     runAction(order, "ship", "Order shipped. Confirmation reminder scheduled.", () =>
       shipAdminOrder(order.orderNumber, {
         deliveryDays: draft.deliveryDays ? Number(draft.deliveryDays) : undefined,
-        courierName: draft.courierName,
-        trackingNumber: draft.trackingNumber,
-        trackingUrl: draft.trackingUrl,
+        courierName: draft.courierName ?? order.courierName,
+        trackingNumber: draft.trackingNumber ?? order.trackingNumber,
+        trackingUrl: draft.trackingUrl ?? order.trackingUrl,
         shipmentNotes: draft.note,
       })
     );
@@ -615,16 +628,30 @@ const AdminOrders = ({
                       placeholder="Delivery days"
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
                     />
-                    <input
-                      value={drafts[selectedOrder.orderNumber]?.courierName || ""}
+                    <select
+                      value={
+                        drafts[selectedOrder.orderNumber]?.courierName ??
+                        selectedOrder.courierName ??
+                        ""
+                      }
                       onChange={(event) =>
                         updateDraft(selectedOrder.orderNumber, "courierName", event.target.value)
                       }
-                      placeholder="Courier name"
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
-                    />
+                    >
+                      <option value="">Select courier</option>
+                      {PAKISTAN_COURIERS.map((courier) => (
+                        <option key={courier} value={courier}>
+                          {courier}
+                        </option>
+                      ))}
+                    </select>
                     <input
-                      value={drafts[selectedOrder.orderNumber]?.trackingNumber || ""}
+                      value={
+                        drafts[selectedOrder.orderNumber]?.trackingNumber ??
+                        selectedOrder.trackingNumber ??
+                        ""
+                      }
                       onChange={(event) =>
                         updateDraft(selectedOrder.orderNumber, "trackingNumber", event.target.value)
                       }
@@ -632,7 +659,11 @@ const AdminOrders = ({
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1572D3]"
                     />
                     <input
-                      value={drafts[selectedOrder.orderNumber]?.trackingUrl || ""}
+                      value={
+                        drafts[selectedOrder.orderNumber]?.trackingUrl ??
+                        selectedOrder.trackingUrl ??
+                        ""
+                      }
                       onChange={(event) =>
                         updateDraft(selectedOrder.orderNumber, "trackingUrl", event.target.value)
                       }
@@ -755,6 +786,22 @@ const AdminOrders = ({
                     <p className="text-xs text-slate-400">Confirmation email</p>
                     <p className="font-bold text-slate-900">
                       {formatDate(selectedOrder.deliveryConfirmationSentAt)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Customer confirmed</p>
+                    <p className={`font-bold ${selectedOrder.deliveryConfirmedAt ? "text-green-700" : "text-slate-900"}`}>
+                      {selectedOrder.deliveryConfirmedAt
+                        ? formatDate(selectedOrder.deliveryConfirmedAt)
+                        : "Not confirmed yet"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Order result</p>
+                    <p className={`font-bold ${selectedOrder.status === "DELIVERED" ? "text-green-700" : "text-slate-900"}`}>
+                      {selectedOrder.status === "DELIVERED"
+                        ? "Successful"
+                        : "In progress"}
                     </p>
                   </div>
                 </div>

@@ -14,6 +14,11 @@ const {
 
 const router = express.Router();
 
+router.post(
+  "/delivery-confirmation/confirm",
+  CommerceController.confirmOrderDeliveryByToken
+);
+
 router.patch(
   "/admin/orders/:orderId/delivery",
   requireAuth,

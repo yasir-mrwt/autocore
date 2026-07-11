@@ -52,9 +52,27 @@ app.all("*", (req, res, next) => {
 app.use(generatedError);
 
 const PORT = process.env.PORT || 8000;
+let deliveryConfirmationInterval;
+
+const startDeliveryConfirmationScheduler = () => {
+  if (deliveryConfirmationInterval) return;
+
+  const run = () => {
+    require("./src/modules/commerce/commerce.controller")
+      .sendDueDeliveryConfirmations()
+      .catch((error) => {
+        console.error("Delivery confirmation scheduler failed:", error.message);
+      });
+  };
+
+  deliveryConfirmationInterval = setInterval(run, 10 * 60 * 1000);
+  setTimeout(run, 30 * 1000);
+};
+
 const startServer = () =>
   app.listen(PORT, () => {
     console.log(`Listening on ${PORT}`);
+    startDeliveryConfirmationScheduler();
   });
 
 if (require.main === module) {

@@ -27,6 +27,11 @@ const hydrateCustomerCommerce = async (dispatch) => {
 
 const hydrateRole = async (dispatch, role) => {
   const res = await getMe(role);
+  const expectedApiRole = role === "Admin" ? "ADMIN" : "CUSTOMER";
+  if (res.user?.role !== expectedApiRole) {
+    throw new Error(`${role} session role mismatch.`);
+  }
+
   dispatch(addUser({ userType: role, user: res.user }));
   if (role === "Buyer") await hydrateCustomerCommerce(dispatch);
   return { userType: role, status: 200 };

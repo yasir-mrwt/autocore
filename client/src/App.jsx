@@ -18,6 +18,7 @@ const WatchList = lazy(() => import("./pages/buyer/WatchList"));
 const ShopPage = lazy(() => import("./pages/shop/ShopPage"));
 const ProductDetail = lazy(() => import("./pages/shop/ProductDetail"));
 const Profile = lazy(() => import("./pages/buyer/Profile"));
+const DeliveryConfirmation = lazy(() => import("./pages/DeliveryConfirmation"));
 
 const PageLoader = () => (
   <div className="grid min-h-[60vh] place-items-center bg-slate-50 px-4 text-center">
@@ -96,6 +97,7 @@ const App = () => {
             <Route path="/sign-up" element={<SignUpBuyer />} />
             <Route path="/shop" element={<ShopPage />} />
             <Route path="/shop/product/:productId" element={<ProductDetail />} />
+            <Route path="/delivery-confirmation" element={<DeliveryConfirmation />} />
             <Route
               path="/admin/*"
               element={

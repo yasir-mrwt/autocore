@@ -34,6 +34,7 @@ import {
   removeWishlistItemRemote,
   syncStripeCheckoutSession,
 } from "../../services/commerceService";
+import { notifySuccess } from "../../utils/Toast";
 
 const SORT_OPTIONS = [
   { label: "Most Popular", value: "popular" },
@@ -370,6 +371,7 @@ export default function ShopPage() {
       clearRemoteCart()
         .then((cart) => {
           if (active) dispatch(setCartItems(cart.items));
+          if (active) notifySuccess("Payment received. You can view your product in the Recent tab.");
         })
         .catch(() => {
           if (active) dispatch(clearCart());
@@ -387,6 +389,7 @@ export default function ShopPage() {
       .then((result) => {
         if (!active) return;
         dispatch(setCartItems(result.cart.items));
+        notifySuccess("Payment received. You can view your product in the Recent tab.");
       })
       .catch(() => {
         clearRemoteCart()

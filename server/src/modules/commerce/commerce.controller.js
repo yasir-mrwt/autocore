@@ -1,4 +1,5 @@
 const { getPrisma } = require("../../config/prisma");
+const crypto = require("crypto");
 const { formatCart, formatOrder, formatWishlistItem } = require("./commerce.formatters");
 const { sendMail } = require("../../../Utils/mailer");
 const { getStripeInstance } = require("../../../Utils/stripe");
@@ -344,6 +345,66 @@ const getClientUrl = () => process.env.CLIENT_URL || "http://localhost:5173";
 
 const toStripeAmount = (amount) => Math.max(Math.round(Number(amount || 0) * 100), 0);
 
+const getConfirmationSecret = () =>
+  process.env.DELIVERY_CONFIRMATION_SECRET ||
+  process.env.ACCESS_TOKEN_SECRET ||
+  process.env.REFRESH_TOKEN_SECRET;
+
+const base64UrlJson = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+
+const createDeliveryConfirmationToken = (order) => {
+  const secret = getConfirmationSecret();
+  if (!secret) {
+    throw new Error("DELIVERY_CONFIRMATION_SECRET or ACCESS_TOKEN_SECRET is required.");
+  }
+
+  const payload = {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+  };
+  const encodedPayload = base64UrlJson(payload);
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
+};
+
+const verifyDeliveryConfirmationToken = (token) => {
+  const secret = getConfirmationSecret();
+  if (!secret) {
+    throw new Error("DELIVERY_CONFIRMATION_SECRET or ACCESS_TOKEN_SECRET is required.");
+  }
+
+  const [encodedPayload, signature] = String(token || "").split(".");
+  if (!encodedPayload || !signature) {
+    throw new Error("Invalid confirmation token.");
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    throw new Error("Invalid confirmation token.");
+  }
+
+  const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+  if (!payload.orderId || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
+    throw new Error("Expired confirmation token.");
+  }
+
+  return payload;
+};
+
 const addDays = (date, days) => {
   const next = new Date(date);
   next.setDate(next.getDate() + Number(days || 0));
@@ -383,6 +444,52 @@ const createAdminAuditLog = (tx, { adminId, action, order, metadata }) =>
     },
   });
 
+const getOrderUrl = () => `${getClientUrl()}/buyer/watch-list`;
+
+const getConfirmationUrl = (order) =>
+  `${getClientUrl()}/delivery-confirmation?token=${encodeURIComponent(
+    createDeliveryConfirmationToken(order)
+  )}`;
+
+const buildDispatchEmail = (order) => ({
+  subject: `Your AutoCore order ${order.orderNumber} is ready for dispatch`,
+  html: `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;color:#0f172a">
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0">
+        <h1 style="margin:0;color:#1572D3">AutoCore</h1>
+        <p style="margin:8px 0 0;color:#64748b">Dispatch update</p>
+      </div>
+      <div style="padding:24px">
+        <h2 style="margin:0 0 12px">Your parcel is ready for dispatch</h2>
+        <p style="line-height:1.6;color:#475569">Order <strong>${order.orderNumber}</strong> has been packed and is ready for courier pickup.</p>
+        <p style="line-height:1.6;color:#475569">Estimated delivery: <strong>${order.estimatedDeliveryAt ? new Date(order.estimatedDeliveryAt).toLocaleDateString("en-PK") : "Not set yet"}</strong></p>
+        <a href="${getOrderUrl()}" style="display:inline-block;background:#1572D3;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">View order</a>
+      </div>
+    </div>
+  `,
+  text: `AutoCore order ${order.orderNumber} is ready for dispatch. View it here: ${getOrderUrl()}`,
+});
+
+const buildShippedEmail = (order) => ({
+  subject: `Your AutoCore order ${order.orderNumber} has shipped`,
+  html: `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;color:#0f172a">
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0">
+        <h1 style="margin:0;color:#1572D3">AutoCore</h1>
+        <p style="margin:8px 0 0;color:#64748b">Shipping update</p>
+      </div>
+      <div style="padding:24px">
+        <h2 style="margin:0 0 12px">Your parcel has shipped</h2>
+        <p style="line-height:1.6;color:#475569">Order <strong>${order.orderNumber}</strong> is now with ${order.courierName || "the courier"}.</p>
+        <p style="line-height:1.6;color:#475569">Tracking number: <strong>${order.trackingNumber || "Not provided"}</strong></p>
+        <p style="line-height:1.6;color:#475569">Estimated delivery: <strong>${order.estimatedDeliveryAt ? new Date(order.estimatedDeliveryAt).toLocaleDateString("en-PK") : "Not set"}</strong></p>
+        <a href="${getOrderUrl()}" style="display:inline-block;background:#1572D3;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Track order</a>
+      </div>
+    </div>
+  `,
+  text: `AutoCore order ${order.orderNumber} has shipped with ${order.courierName || "the courier"}. Tracking: ${order.trackingNumber || "Not provided"}.`,
+});
+
 const buildDeliveryConfirmationEmail = (order) => ({
   subject: `Confirm delivery for ${order.orderNumber}`,
   html: `
@@ -400,14 +507,14 @@ const buildDeliveryConfirmationEmail = (order) => ({
         <p style="line-height:1.6;color:#475569">
           Tracking number: <strong>${order.trackingNumber || "Not provided"}</strong>
         </p>
-        <a href="${getClientUrl()}/buyer/watch-list" style="display:inline-block;background:#1572D3;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">
+        <a href="${getConfirmationUrl(order)}" style="display:inline-block;background:#1572D3;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">
           Confirm Received
         </a>
       </div>
     </div>
   `,
-  text: `AutoCore delivery confirmation for ${order.orderNumber}. Confirm receipt here: ${getClientUrl()}/buyer/watch-list`,
-  ctaUrl: `${getClientUrl()}/buyer/watch-list`,
+  text: `AutoCore delivery confirmation for ${order.orderNumber}. Confirm receipt here: ${getConfirmationUrl(order)}`,
+  ctaUrl: getConfirmationUrl(order),
 });
 
 const buildPaymentReceiptEmail = (order) => ({
@@ -454,6 +561,103 @@ const sendPaymentReceiptSafely = async (order) => {
   }
 };
 
+const sendOrderEmailSafely = async (order, buildEmail, label) => {
+  const recipient = order?.user?.email;
+  if (!recipient) {
+    return { sent: false, error: "Order customer email is missing." };
+  }
+
+  try {
+    const email = buildEmail(order);
+    const result = await sendMail({
+      to: recipient,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+    return { sent: true, messageId: result.messageId };
+  } catch (error) {
+    console.error(`Could not send ${label} email for ${order.orderNumber}:`, error.message);
+    return { sent: false, error: error.message };
+  }
+};
+
+const normalizeShippingAddress = (shippingAddress = {}) => ({
+  fullName: String(shippingAddress.fullName || "").trim(),
+  phone: String(shippingAddress.phone || "").trim(),
+  line1: String(shippingAddress.line1 || "").trim(),
+  line2: shippingAddress.line2 ? String(shippingAddress.line2).trim() : null,
+  city: String(shippingAddress.city || "").trim(),
+  state: shippingAddress.state ? String(shippingAddress.state).trim() : null,
+  postalCode: shippingAddress.postalCode
+    ? String(shippingAddress.postalCode).trim()
+    : null,
+  country: String(shippingAddress.country || "Pakistan").trim() || "Pakistan",
+});
+
+const formatSavedShippingAddress = (address) =>
+  address
+    ? {
+        id: address.id,
+        fullName: address.fullName,
+        phone: address.phone,
+        line1: address.line1,
+        line2: address.line2,
+        city: address.city,
+        state: address.state,
+        postalCode: address.postalCode,
+        country: address.country,
+        isDefault: address.isDefault,
+      }
+    : null;
+
+const saveDefaultShippingAddress = async (tx, userId, shippingAddress) => {
+  const existingDefault = await tx.address.findFirst({
+    where: {
+      userId,
+      isDefault: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (existingDefault) {
+    await tx.address.updateMany({
+      where: {
+        userId,
+        isDefault: true,
+        id: { not: existingDefault.id },
+      },
+      data: { isDefault: false },
+    });
+
+    return tx.address.update({
+      where: { id: existingDefault.id },
+      data: {
+        ...shippingAddress,
+        label: "Checkout",
+        isDefault: true,
+      },
+    });
+  }
+
+  await tx.address.updateMany({
+    where: {
+      userId,
+      isDefault: true,
+    },
+    data: { isDefault: false },
+  });
+
+  return tx.address.create({
+    data: {
+      userId,
+      ...shippingAddress,
+      label: "Checkout",
+      isDefault: true,
+    },
+  });
+};
+
 const createOrderFromCart = async (req, res, next) => {
   try {
     const prisma = getPrisma();
@@ -484,51 +688,69 @@ const createOrderFromCart = async (req, res, next) => {
     const tax = 0;
     const discount = 0;
     const total = subtotal + shippingFee + tax - discount;
-    const shippingAddress = {
-      ...req.body.shippingAddress,
-      country: req.body.shippingAddress.country || "Pakistan",
-    };
+    const shippingAddress = normalizeShippingAddress(req.body.shippingAddress);
 
-    const order = await prisma.order.create({
-      data: {
-        userId: req.user.id,
-        orderNumber: createOrderNumber(),
-        status: "PENDING_PAYMENT",
-        paymentStatus: "PENDING",
-        subtotal,
-        shippingFee,
-        tax,
-        discount,
-        total,
-        currency: "PKR",
-        shippingAddressSnapshot: shippingAddress,
-        notes: req.body.notes || null,
-        items: {
-          create: cartItems.map((item) => ({
-            productId: item.productId,
-            productName: item.product.name,
-            sku: item.product.sku,
-            partNumber: item.product.partNumber,
-            price: item.product.price,
-            quantity: item.quantity,
-            lineTotal: Number(item.product.price) * item.quantity,
-          })),
-        },
-        timeline: {
-          create: {
-            status: "PENDING_PAYMENT",
-            label: "Order created",
-            message: "Your order was created and is waiting for payment.",
+    const { order, savedShippingAddress } = await prisma.$transaction(async (tx) => {
+      const savedAddress = await saveDefaultShippingAddress(
+        tx,
+        req.user.id,
+        shippingAddress
+      );
+
+      if (shippingAddress.phone && shippingAddress.phone !== req.user.phone) {
+        await tx.user.update({
+          where: { id: req.user.id },
+          data: { phone: shippingAddress.phone },
+        });
+      }
+
+      const createdOrder = await tx.order.create({
+        data: {
+          userId: req.user.id,
+          orderNumber: createOrderNumber(),
+          status: "PENDING_PAYMENT",
+          paymentStatus: "PENDING",
+          subtotal,
+          shippingFee,
+          tax,
+          discount,
+          total,
+          currency: "PKR",
+          shippingAddressSnapshot: shippingAddress,
+          notes: req.body.notes || null,
+          items: {
+            create: cartItems.map((item) => ({
+              productId: item.productId,
+              productName: item.product.name,
+              sku: item.product.sku,
+              partNumber: item.product.partNumber,
+              price: item.product.price,
+              quantity: item.quantity,
+              lineTotal: Number(item.product.price) * item.quantity,
+            })),
+          },
+          timeline: {
+            create: {
+              status: "PENDING_PAYMENT",
+              label: "Order created",
+              message: "Your order was created and is waiting for payment.",
+            },
           },
         },
-      },
-      include: orderInclude,
+        include: orderInclude,
+      });
+
+      return {
+        order: createdOrder,
+        savedShippingAddress: savedAddress,
+      };
     });
 
     return res.status(201).json({
       message: "Order created. Stripe payment will be attached in the checkout step.",
       order: formatOrder(order),
       cart: formatCart(cartItems),
+      defaultShippingAddress: formatSavedShippingAddress(savedShippingAddress),
     });
   } catch (error) {
     return next(error);
@@ -887,9 +1109,33 @@ const prepareOrderDispatch = async (req, res, next) => {
       return updatedOrder;
     });
 
+    const emailResult = await sendOrderEmailSafely(
+      order,
+      buildDispatchEmail,
+      "dispatch"
+    );
+
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId: order.id,
+        adminId: req.user.id,
+        status: order.status,
+        label: emailResult.sent ? "Dispatch email sent" : "Dispatch email not sent",
+        message: emailResult.sent
+          ? `Dispatch email sent to ${order.user?.email}.`
+          : `Dispatch email could not be sent: ${emailResult.error}`,
+        metadata: emailResult,
+      },
+    });
+
     return res.status(200).json({
       message: "Order marked ready for dispatch.",
-      order: formatOrder(order),
+      order: formatOrder(
+        await prisma.order.findUnique({
+          where: { id: order.id },
+          include: adminOrderInclude,
+        })
+      ),
     });
   } catch (error) {
     return next(error);
@@ -924,7 +1170,8 @@ const shipOrder = async (req, res, next) => {
     }
 
     const shippedAt = existing.shippedAt || new Date();
-    const confirmationDueAt = addDays(shippedAt, 2);
+    const confirmationDueAt =
+      estimatedDeliveryAt || addDays(shippedAt, Number(req.body.deliveryDays || 2));
 
     const order = await prisma.$transaction(async (tx) => {
       const updatedOrder = await tx.order.update({
@@ -947,7 +1194,7 @@ const shipOrder = async (req, res, next) => {
         adminId: req.user.id,
         status: "SHIPPED",
         label: "Order shipped",
-        message: "Your package has been shipped. A delivery confirmation reminder is scheduled after 2 days.",
+        message: "Your package has been shipped. A delivery confirmation reminder is scheduled for the estimated delivery time.",
         metadata: {
           courierName: updatedOrder.courierName,
           trackingNumber: updatedOrder.trackingNumber,
@@ -970,9 +1217,29 @@ const shipOrder = async (req, res, next) => {
       return updatedOrder;
     });
 
+    const emailResult = await sendOrderEmailSafely(order, buildShippedEmail, "shipping");
+
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId: order.id,
+        adminId: req.user.id,
+        status: order.status,
+        label: emailResult.sent ? "Shipping email sent" : "Shipping email not sent",
+        message: emailResult.sent
+          ? `Shipping email sent to ${order.user?.email}.`
+          : `Shipping email could not be sent: ${emailResult.error}`,
+        metadata: emailResult,
+      },
+    });
+
     return res.status(200).json({
       message: "Order shipped.",
-      order: formatOrder(order),
+      order: formatOrder(
+        await prisma.order.findUnique({
+          where: { id: order.id },
+          include: adminOrderInclude,
+        })
+      ),
     });
   } catch (error) {
     return next(error);
@@ -1021,6 +1288,65 @@ const confirmOrderDelivery = async (req, res, next) => {
     });
   } catch (error) {
     return next(error);
+  }
+};
+
+const confirmOrderDeliveryByToken = async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+    const payload = verifyDeliveryConfirmationToken(token);
+    const prisma = getPrisma();
+    const existing = await prisma.order.findUnique({
+      where: { id: payload.orderId },
+      include: adminOrderInclude,
+    });
+
+    if (!existing || existing.orderNumber !== payload.orderNumber) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    if (!["SHIPPED", "DELIVERED"].includes(existing.status)) {
+      return res.status(409).json({ message: "Only shipped orders can be confirmed." });
+    }
+
+    if (existing.deliveryConfirmedAt && existing.status === "DELIVERED") {
+      return res.status(200).json({
+        message: "Delivery was already confirmed.",
+        order: formatOrder(existing),
+      });
+    }
+
+    const confirmedAt = new Date();
+    const order = await prisma.$transaction(async (tx) => {
+      const updatedOrder = await tx.order.update({
+        where: { id: existing.id },
+        data: {
+          status: "DELIVERED",
+          deliveredAt: existing.deliveredAt || confirmedAt,
+          deliveryConfirmedAt: existing.deliveryConfirmedAt || confirmedAt,
+        },
+        include: adminOrderInclude,
+      });
+
+      await addOrderTimelineEvent(tx, {
+        orderId: updatedOrder.id,
+        status: "DELIVERED",
+        label: "Delivery confirmed by customer",
+        message: "Customer confirmed receipt from the delivery confirmation email.",
+        metadata: { confirmedBy: "email_link", confirmedAt },
+      });
+
+      return updatedOrder;
+    });
+
+    return res.status(200).json({
+      message: "Delivery confirmed. Thank you.",
+      order: formatOrder(order),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message || "Delivery confirmation link is invalid or expired.",
+    });
   }
 };
 
@@ -1108,6 +1434,55 @@ const sendDeliveryConfirmation = async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+};
+
+const sendDueDeliveryConfirmations = async () => {
+  const prisma = getPrisma();
+  const dueOrders = await prisma.order.findMany({
+    where: {
+      status: "SHIPPED",
+      deliveryConfirmationSentAt: null,
+      deliveryConfirmationDueAt: {
+        lte: new Date(),
+      },
+    },
+    include: adminOrderInclude,
+    take: 25,
+  });
+
+  for (const order of dueOrders) {
+    const emailResult = await sendOrderEmailSafely(
+      order,
+      buildDeliveryConfirmationEmail,
+      "delivery confirmation"
+    );
+
+    if (!emailResult.sent) continue;
+
+    const sentAt = new Date();
+    await prisma.$transaction([
+      prisma.order.update({
+        where: { id: order.id },
+        data: { deliveryConfirmationSentAt: sentAt },
+      }),
+      prisma.orderStatusEvent.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          label: "Delivery confirmation email sent automatically",
+          message: `Delivery confirmation email sent to ${order.user?.email}.`,
+          metadata: {
+            sentAt,
+            messageId: emailResult.messageId,
+            confirmationUrl: getConfirmationUrl(order),
+            automatic: true,
+          },
+        },
+      }),
+    ]);
+  }
+
+  return dueOrders.length;
 };
 
 const adminMarkDelivered = async (req, res, next) => {
@@ -1461,6 +1836,7 @@ module.exports = {
   addWishlistItem,
   cancelOrder,
   confirmOrderDelivery,
+  confirmOrderDeliveryByToken,
   adminMarkDelivered,
   clearCart,
   createStripeCheckoutSession,
@@ -1477,6 +1853,7 @@ module.exports = {
   removeCartItem,
   removeWishlistItem,
   sendDeliveryConfirmation,
+  sendDueDeliveryConfirmations,
   shipOrder,
   syncStripeCheckoutSession,
   updateOrderDelivery,

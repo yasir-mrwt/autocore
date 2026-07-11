@@ -29,10 +29,25 @@ const shippingAddressValidator = [
     .trim()
     .isLength({ min: 4 })
     .withMessage("Shipping address line 1 is required."),
+  body("shippingAddress.line2")
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 160 })
+    .withMessage("Shipping address line 2 is too long."),
   body("shippingAddress.city")
     .trim()
     .isLength({ min: 2 })
     .withMessage("Shipping city is required."),
+  body("shippingAddress.state")
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 120 })
+    .withMessage("Shipping state is too long."),
+  body("shippingAddress.postalCode")
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 30 })
+    .withMessage("Shipping postal code is too long."),
   body("shippingAddress.country")
     .optional()
     .trim()
@@ -50,6 +65,19 @@ const orderStatuses = [
   "DELIVERED",
   "CANCELLED",
   "REFUNDED",
+];
+
+const pakistanCouriers = [
+  "TCS",
+  "Leopards Courier",
+  "M&P Courier",
+  "Trax",
+  "Call Courier",
+  "BlueEx",
+  "PostEx",
+  "Pakistan Post",
+  "DHL Pakistan",
+  "FedEx Pakistan",
 ];
 
 const updateOrderDeliveryValidator = [
@@ -91,8 +119,17 @@ const shipOrderValidator = [
     .optional()
     .isISO8601()
     .withMessage("Estimated delivery date must be a valid date."),
-  body("courierName").optional({ nullable: true }).trim().isLength({ max: 80 }),
-  body("trackingNumber").optional({ nullable: true }).trim().isLength({ max: 120 }),
+  body("courierName")
+    .trim()
+    .notEmpty()
+    .withMessage("Courier name is required.")
+    .isIn(pakistanCouriers)
+    .withMessage("Courier name is invalid."),
+  body("trackingNumber")
+    .trim()
+    .notEmpty()
+    .withMessage("Tracking number is required.")
+    .isLength({ max: 120 }),
   body("trackingUrl")
     .optional({ nullable: true })
     .trim()

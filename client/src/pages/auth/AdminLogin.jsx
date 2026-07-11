@@ -65,7 +65,6 @@ const AdminLogin = () => {
                 values,
                 errors,
                 touched,
-                setValues,
               }) => (
                 <div className="space-y-5 mt-5">
                   <InputField
@@ -81,7 +80,7 @@ const AdminLogin = () => {
                   />
                   <InputField
                     title="Password"
-                    name="passsword"
+                    name="password"
                     type="password"
                     placeHolder="Password"
                     handleBlur={handleBlur("password")}
@@ -91,18 +90,6 @@ const AdminLogin = () => {
                     touched={touched?.password}
                   />
                   <div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setValues({
-                          email: "admin@autocore.local",
-                          password: "change-this-admin-password",
-                        });
-                      }}
-                      className="inline-flex mb-3 w-full items-center justify-center rounded-md bg-black px-3.5 py-2.5 font-semibold leading-7 text-white hover:bg-black/80"
-                    >
-                      Try Dummy
-                    </button>
                     <button
                       onClick={handleSubmit}
                       type="button"

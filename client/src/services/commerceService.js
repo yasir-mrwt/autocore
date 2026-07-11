@@ -1,7 +1,26 @@
 import catalogClient, { normalizeProduct } from "./catalogService";
 import { getAccessToken } from "../utils/Token";
 
-export const canUseCommerceApi = () => Boolean(getAccessToken("Buyer"));
+const getTokenPayload = (token) => {
+  try {
+    const encodedPayload = token.split(".")[1];
+    if (!encodedPayload || typeof atob !== "function") return null;
+
+    const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    return JSON.parse(atob(padded));
+  } catch (error) {
+    return null;
+  }
+};
+
+export const canUseCommerceApi = () => {
+  const token = getAccessToken("Buyer");
+  if (!token) return false;
+
+  const payload = getTokenPayload(token);
+  return payload?.role ? payload.role === "CUSTOMER" : true;
+};
 
 export const normalizeCartItem = (item = {}) => {
   const product = normalizeProduct(item.product || {});
@@ -198,4 +217,11 @@ export const syncStripeCheckoutSession = async ({ orderId, sessionId }) => {
     ...data,
     cart: normalizeCart(data.cart),
   };
+};
+
+export const confirmDeliveryFromEmail = async (token) => {
+  const { data } = await catalogClient.post("/commerce/delivery-confirmation/confirm", {
+    token,
+  });
+  return data;
 };
