@@ -198,22 +198,22 @@ The current automated coverage is a backend smoke test for app import and token 
 
 ## Netlify Deployment
 
-This repo can also be deployed to Netlify without replacing Docker. Netlify serves the Vite frontend from `client/dist` and routes REST API requests through a Netlify Function that imports the existing Express app.
+This repo is set up for two Netlify sites without replacing Docker:
 
-Netlify configuration:
+- Frontend site: base directory `client`, build command `npm run build`, publish directory `dist`.
+- Backend site: base directory `server`, build command `npm run netlify:build`, functions directory `netlify/functions`.
+
+The backend site serves the Express REST API through Netlify Functions using the existing application logic. Its clean API rewrite is:
 
 ```txt
-Build command: npm run netlify:build
-Publish:       client/dist
-Functions:     server/netlify/functions
-Node:          24.20.0
+/api/* -> /.netlify/functions/api/:splat
 ```
 
-Production API routing:
+Set the frontend site's production API variable to the backend site's public API base:
 
-```txt
-Frontend API base: /api/v1
-Rewrite:           /api/* -> /.netlify/functions/api/:splat
+```env
+VITE_API_BASE_URL="https://YOUR-BACKEND-SITE.netlify.app/api/v1"
+VITE_SOCKET_URL=""
 ```
 
 Required Netlify environment variables:
@@ -222,8 +222,8 @@ Required Netlify environment variables:
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
 ACCESS_TOKEN_SECRET="replace-with-a-long-random-string"
 DELIVERY_CONFIRMATION_SECRET="replace-with-a-long-random-string"
-CLIENT_URL="https://YOUR-SITE.netlify.app"
-CLIENT_ORIGIN="https://YOUR-SITE.netlify.app"
+CLIENT_URL="https://YOUR-FRONTEND-SITE.netlify.app"
+CLIENT_ORIGIN="https://YOUR-FRONTEND-SITE.netlify.app"
 STRIPE_SECRET_KEY="sk_live_or_test_..."
 STRIPE_WEBHOOK_SECRET="whsec_..."
 STRIPE_CURRENCY="pkr"
@@ -314,10 +314,42 @@ Set the generated value in `STRIPE_WEBHOOK_SECRET`.
 Production webhook endpoint for Netlify:
 
 ```txt
-https://YOUR-SITE.netlify.app/api/v1/commerce/stripe/webhook
+https://YOUR-BACKEND-SITE.netlify.app/api/v1/commerce/stripe/webhook
 ```
 
 Stripe secrets stay server-only. Do not expose `STRIPE_SECRET_KEY` or `STRIPE_WEBHOOK_SECRET` as `VITE_` frontend variables.
+
+## CI/CD
+
+GitHub Actions runs the portfolio-safe validation workflow in `.github/workflows/ci.yml` for pull requests targeting `main`, pushes to branches, and manual dispatches.
+
+The workflow checks:
+
+- Frontend: `npm ci`, `npm run lint`, and `npm run build`.
+- Backend: `npm ci`, JavaScript syntax checks, `npm run db:validate`, `npm run prisma:generate`, `npm test`, and `npm run netlify:smoke`.
+
+The CI workflow uses dummy local-safe environment values for Prisma generation and smoke tests. It does not connect to production PostgreSQL, Stripe, Supabase, Cloudinary, SMTP, or Netlify, and it does not run production migrations.
+
+Recommended deployment flow:
+
+```txt
+feature/fix branch
+  -> pull request to main
+  -> GitHub Actions CI passes
+  -> merge to main
+  -> Netlify deploys the frontend and backend sites from main
+```
+
+For a solo portfolio project, protect `main` in GitHub so production deploys only happen after CI passes:
+
+- Require a pull request before merging.
+- Require status checks before merging.
+- Require branches to be up to date before merging.
+- Require these checks: `Frontend Checks` and `Backend Checks`.
+- Do not allow bypassing the above settings.
+- Do not allow force pushes.
+- Do not allow deletions.
+- Require one approval only if you want a deliberate pause before merging your own PRs; otherwise keep approvals optional for solo work.
 
 ## Node Runtime Compatibility
 
