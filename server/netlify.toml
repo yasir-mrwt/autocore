@@ -1,0 +1,38 @@
+[build]
+  command = "npm run netlify:build"
+
+[build.environment]
+  NODE_VERSION = "24.20.0"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+  external_node_modules = [
+    "@prisma/adapter-pg",
+    "@prisma/client",
+    "@inflowapm/node",
+    "bcrypt",
+    "body-parser",
+    "cloudinary",
+    "cors",
+    "express",
+    "express-fileupload",
+    "express-validator",
+    "morgan",
+    "nodemailer",
+    "pg",
+    "serverless-http",
+    "stripe"
+  ]
+
+  included_files = ["prisma/**"]
+
+[functions."delivery-confirmations"]
+  schedule = "*/10 * * * *"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true

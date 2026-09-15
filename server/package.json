@@ -16,7 +16,8 @@
     "import:auto-parts": "node scripts/importAutoPartsSeedData.js",
     "dedupe:product-images": "node scripts/dedupeProductImages.js",
     "netlify:smoke": "node scripts/smokeNetlifyFunction.js",
-    "test": "node scripts/smokeTest.js"
+    "test": "node scripts/smokeTest.js",
+    "netlify:build": "prisma generate"
   },
   "author": "Scintillate",
   "license": "ISC",
