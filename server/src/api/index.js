@@ -5,14 +5,39 @@ const commerceRoutes = require("../modules/commerce/commerce.routes");
 const healthRoutes = require("../modules/health/health.routes");
 const mediaRoutes = require("../modules/media/media.routes");
 const reviewRoutes = require("../modules/reviews/review.routes");
+const { inflowApmMiddleware } = require("../config/inflowApm");
 
 const router = express.Router();
 
-router.use("/auth", authRoutes);
-router.use("/catalog", catalogRoutes);
-router.use("/commerce", commerceRoutes);
-router.use("/health", healthRoutes);
-router.use("/media", mediaRoutes);
-router.use("/reviews", reviewRoutes);
+router.use(
+  "/auth",
+  inflowApmMiddleware({ routePrefix: "/api/v1/auth" }),
+  authRoutes
+);
+router.use(
+  "/catalog",
+  inflowApmMiddleware({ routePrefix: "/api/v1/catalog" }),
+  catalogRoutes
+);
+router.use(
+  "/commerce",
+  inflowApmMiddleware({ routePrefix: "/api/v1/commerce" }),
+  commerceRoutes
+);
+router.use(
+  "/health",
+  inflowApmMiddleware({ routePrefix: "/api/v1/health" }),
+  healthRoutes
+);
+router.use(
+  "/media",
+  inflowApmMiddleware({ routePrefix: "/api/v1/media" }),
+  mediaRoutes
+);
+router.use(
+  "/reviews",
+  inflowApmMiddleware({ routePrefix: "/api/v1/reviews" }),
+  reviewRoutes
+);
 
 module.exports = router;

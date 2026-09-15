@@ -7,6 +7,11 @@
     "dev": "node scripts/dev.js",
     "dev:client": "npm --prefix client run dev",
     "dev:server": "npm --prefix server run dev",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "netlify:build": "npm --prefix server ci && npm --prefix server run prisma:generate && npm --prefix client ci && VITE_API_BASE_URL=/api/v1 VITE_SOCKET_URL= npm --prefix client run build",
+    "netlify:smoke": "npm --prefix server run netlify:smoke",
     "build": "npm --prefix client run build",
     "db:validate": "npm --prefix server run db:validate",
     "test": "npm --prefix server test"

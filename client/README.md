@@ -30,6 +30,7 @@ From the project root:
 ```bash
 npm run dev:client
 npm run build
+npm run docker:up
 ```
 
 From `client/`:
@@ -37,7 +38,27 @@ From `client/`:
 ```bash
 npm run dev
 npm run build
+npm run lint
 ```
+
+## Docker Notes
+
+The Compose development service runs Vite on internal port `5173` and exposes it on configurable host port `FRONTEND_PORT`, default `5173`.
+
+Browser-side API calls must use the host URL, not the Docker service name:
+
+```env
+VITE_API_BASE_URL=http://localhost:14322/api/v1
+VITE_SOCKET_URL=http://localhost:14322
+```
+
+The container uses a named `frontend-node-modules` volume so the bind-mounted source does not overwrite installed dependencies.
+
+## Netlify Notes
+
+Netlify builds the frontend with `VITE_API_BASE_URL=/api/v1`, so production browser requests stay same-origin and are rewritten to the Express Netlify Function.
+
+Do not add Stripe secret keys to frontend env variables. Only browser-safe `VITE_` values belong in the client build.
 
 ## Handover Checks
 

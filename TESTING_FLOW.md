@@ -76,13 +76,40 @@ Expected result: Prisma validates, migrations apply, admin user exists, and the 
 
 ## 3. Start The App
 
-Start both apps:
+Docker start:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Expected Docker result:
+
+- Frontend listens on `http://localhost:5173`.
+- API listens on `http://localhost:14322/api/v1`.
+- Postgres is reachable on host port `15432` and inside Compose as `db:5432`.
+- `GET http://localhost:14322/api/v1/health` returns status `ok`.
+- `GET http://localhost:14322/api/v1/health/db` returns database `connected`.
+- Backend logs show `prisma migrate deploy` applied or confirmed existing migrations.
+
+Docker support commands:
+
+```bash
+docker compose ps
+docker compose logs -f backend
+docker compose exec backend npm run seed:admin
+docker compose exec backend npm test
+docker compose exec frontend npm run build
+docker compose down
+```
+
+Non-Docker start:
 
 ```bash
 npm run dev
 ```
 
-Expected result:
+Expected non-Docker result:
 
 - API listens on `http://localhost:8000`.
 - Frontend listens on `http://localhost:5173` or the next Vite port.
@@ -97,11 +124,29 @@ Run:
 npm run build
 npm run db:validate
 npm test
+npm --prefix client run lint
+docker compose config
+docker compose build
 ```
 
-Expected result: frontend production build succeeds, Prisma schema validates, and the backend smoke test passes.
+Expected result: frontend production build succeeds, Prisma schema validates, backend smoke test passes, lint either passes or reports actionable code issues, and Compose validates/builds without configuration errors.
 
-The current automated test coverage is intentionally small: it verifies the server app imports without binding a port and the Node 26-safe token helper signs, verifies, and rejects tampered tokens.
+The current automated test coverage is intentionally small: it verifies the server app imports without binding a port and the Node 24-compatible token helper signs, verifies, and rejects tampered tokens.
+
+Netlify compatibility checks:
+
+```bash
+npm run netlify:build
+npm run netlify:smoke
+```
+
+Expected result: Netlify build completes, the function handler returns the health response, and the Stripe webhook path still reaches the existing raw-body webhook middleware.
+
+If Netlify CLI is installed, also run:
+
+```bash
+netlify build
+```
 
 ## 5. Customer Flow
 
@@ -150,6 +195,14 @@ stripe listen --forward-to localhost:8000/api/v1/commerce/stripe/webhook
 
 Expected result: `checkout.session.completed` updates the matching order.
 
+Netlify production webhook endpoint:
+
+```txt
+https://YOUR-SITE.netlify.app/api/v1/commerce/stripe/webhook
+```
+
+Expected result: Stripe signature verification uses `STRIPE_WEBHOOK_SECRET` on the server Function and the raw request body is preserved before JSON parsing.
+
 ## 7. Admin Flow
 
 1. Open `/admin/login`.
@@ -179,6 +232,8 @@ API: POST /api/v1/commerce/delivery-confirmation/confirm
 
 Scheduler note: the API process checks due shipped orders every 10 minutes after startup. For manual QA, use a near delivery date/time or call the same controller from a temporary script in a test environment.
 
+Netlify scheduler note: production Netlify deploys use the scheduled `delivery-confirmations` Function every 10 minutes. The normal Express interval is only for long-running server/Docker deployments.
+
 ## 8. Auth And Session Checks
 
 Customer:
@@ -200,6 +255,12 @@ Expected result: customer and admin sessions remain separate, and refresh cookie
 
 ## 9. Common Failure Checks
 
+- Docker CORS error: check root `.env` values for `FRONTEND_PORT`, `BACKEND_PORT`, `CLIENT_ORIGIN`, and `VITE_API_BASE_URL`.
+- Docker database error: backend must use `db:5432` internally, not `localhost:5432`.
+- Docker dependency error after bind mount: confirm `backend-node-modules` and `frontend-node-modules` volumes exist and host `node_modules` is not mounted over container dependencies.
+- Netlify API returns 404: check the `/api/*` rewrite in `netlify.toml` and confirm the Functions directory is `server/netlify/functions`.
+- Netlify database error: set `DATABASE_URL` to a managed PostgreSQL database and run `npm --prefix server run prisma:deploy` against it.
+- Netlify Stripe webhook error: confirm the Stripe dashboard endpoint is `/api/v1/commerce/stripe/webhook` and the matching `STRIPE_WEBHOOK_SECRET` is set in Netlify.
 - 401 on protected routes: check the access token and refresh cookie flow.
 - CORS error: add the frontend origin to `CLIENT_ORIGIN`.
 - Empty shop: run migrations and import catalog data.
@@ -209,4 +270,4 @@ Expected result: customer and admin sessions remain separate, and refresh cookie
 - Email error: check SMTP variables and `EMAIL_FROM`.
 - Delivery confirmation email missing: check SMTP variables, `CLIENT_URL`, `DELIVERY_CONFIRMATION_SECRET`, order status, and `deliveryConfirmationDueAt`.
 - Admin courier error: select one of the Pakistan courier dropdown values instead of typing a custom courier.
-- Node 26 auth crash: verify `jsonwebtoken` is not installed in the server dependency tree.
+- Node runtime auth crash: verify `jsonwebtoken` is not installed in the server dependency tree.

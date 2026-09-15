@@ -7,6 +7,7 @@
     "dev": "nodemon app",
     "start": "node app",
     "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "db:validate": "prisma validate",
@@ -14,29 +15,32 @@
     "seed:catalog": "node scripts/seedCatalog.js",
     "import:auto-parts": "node scripts/importAutoPartsSeedData.js",
     "dedupe:product-images": "node scripts/dedupeProductImages.js",
+    "netlify:smoke": "node scripts/smokeNetlifyFunction.js",
     "test": "node scripts/smokeTest.js"
   },
   "author": "Scintillate",
   "license": "ISC",
   "dependencies": {
-    "@prisma/adapter-pg": "^7.7.0",
-    "@prisma/client": "^7.7.0",
+    "@inflowapm/node": "^0.1.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "bcrypt": "^6.0.0",
-    "body-parser": "^1.20.2",
-    "cloudinary": "^2.10.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.4",
-    "express": "^4.18.2",
-    "express-fileupload": "^1.4.3",
-    "express-validator": "^7.0.1",
-    "morgan": "^1.10.0",
-    "nodemailer": "^9.0.3",
-    "pg": "^8.20.0",
-    "stripe": "^14.23.0"
+    "body-parser": "^1.20.6",
+    "cloudinary": "^2.11.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "express-fileupload": "^1.5.2",
+    "express-validator": "^7.3.2",
+    "morgan": "^1.12.0",
+    "nodemailer": "^9.1.1",
+    "pg": "^8.23.0",
+    "serverless-http": "^4.0.0",
+    "stripe": "^14.25.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3",
-    "prisma": "^7.8.0"
+    "nodemon": "^3.1.14",
+    "prisma": "^7.10.0"
   },
   "overrides": {
     "@hono/node-server": "^1.19.13"

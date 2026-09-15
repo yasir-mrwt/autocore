@@ -25,3 +25,18 @@ PostgreSQL-backed Express modules are exposed under `/api/v1`.
 - Keep business rules in these modules instead of duplicating them in the client.
 - Use `DELIVERY_CONFIRMATION_SECRET` for email confirmation tokens and keep it stable while outstanding confirmation emails exist.
 - In multi-instance production, run delivery confirmation reminders from one scheduler or worker instead of every API instance.
+
+## Docker Notes
+
+- Docker Compose runs PostgreSQL as service `db` on internal port `5432`.
+- The backend must use `DATABASE_URL=postgresql://...@db:5432/...` inside Compose.
+- Host tools can connect through configurable `DB_PORT`, default `15432`.
+- Startup uses `prisma generate` and `prisma migrate deploy`; it applies existing migrations and does not reset data.
+- Admin and catalog seed scripts remain manual: run them with `docker compose exec backend npm run seed:admin` or `docker compose exec backend npm run seed:catalog`.
+
+## Netlify Notes
+
+- `server/netlify/functions/api.js` imports the existing Express app for REST API requests.
+- `server/netlify/functions/delivery-confirmations.js` runs the existing delivery email worker on Netlify's schedule.
+- Stripe webhooks continue to use the Express raw-body route at `/api/v1/commerce/stripe/webhook`.
+- Netlify production requires a managed PostgreSQL `DATABASE_URL`; keep Docker PostgreSQL for local development.
