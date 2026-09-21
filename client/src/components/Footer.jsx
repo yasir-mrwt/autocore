@@ -22,8 +22,16 @@ const Footer = () => {
                   Verified spare parts, simple checkout, and clear order tracking.
                 </p>
                 <p className="text-xs text-slate-400 md:text-sm">
-                  &copy; Copyright {new Date().getFullYear()}. All Rights Reserved by
-                  AutoCore.
+                  &copy; Copyright 2026. All Rights Reserved by AutoCore. Built by{" "}
+                  <a
+                    className="font-medium text-slate-200 transition-colors hover:text-white"
+                    href="https://yasirmarwat.site"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    Yasir Marwat
+                  </a>
+                  .
                 </p>
               </div>
             </div>
