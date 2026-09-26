@@ -1640,7 +1640,12 @@ const markStripeSessionSucceeded = async (session) => {
   const prisma = getPrisma();
   const orderId = session.metadata?.orderId;
 
-  if (!orderId) return null;
+  if (!orderId) {
+    console.warn("Stripe session succeeded without order metadata.", {
+      checkoutSessionId: session.id,
+    });
+    return null;
+  }
   let updatedOrderId = null;
 
   await prisma.$transaction(async (tx) => {
@@ -1651,7 +1656,15 @@ const markStripeSessionSucceeded = async (session) => {
       },
     });
 
-    if (!order || order.paymentStatus === "SUCCEEDED") return;
+    if (!order) {
+      console.warn("Stripe session succeeded for an order that was not found.", {
+        orderId,
+        checkoutSessionId: session.id,
+      });
+      return;
+    }
+
+    if (order.paymentStatus === "SUCCEEDED") return;
 
     await tx.cartItem.deleteMany({ where: { userId: order.userId } });
 
@@ -1742,19 +1755,29 @@ const handleStripeWebhook = async (req, res, next) => {
     }
 
     const signature = req.headers["stripe-signature"];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     let event;
 
-    if (process.env.STRIPE_WEBHOOK_SECRET) {
+    if (!webhookSecret && process.env.NODE_ENV === "production") {
+      return res.status(503).json({
+        message: "Stripe webhook signing secret is not configured.",
+      });
+    }
+
+    if (webhookSecret) {
       event = stripe.webhooks.constructEvent(
         req.body,
         signature,
-        process.env.STRIPE_WEBHOOK_SECRET
+        webhookSecret
       );
     } else {
       event = JSON.parse(req.body.toString("utf8"));
     }
 
-    if (event.type === "checkout.session.completed") {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded"
+    ) {
       await markStripeSessionSucceeded(event.data.object);
     }
 

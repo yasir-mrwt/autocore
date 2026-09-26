@@ -30,11 +30,10 @@ import {
   addCartItem,
   addWishlistItem,
   canUseCommerceApi,
-  clearRemoteCart,
   removeWishlistItemRemote,
   syncStripeCheckoutSession,
 } from "../../services/commerceService";
-import { notifySuccess } from "../../utils/Toast";
+import { notifyError, notifySuccess } from "../../utils/Toast";
 
 const SORT_OPTIONS = [
   { label: "Most Popular", value: "popular" },
@@ -350,37 +349,52 @@ export default function ShopPage() {
   const paymentStatus = params.get("payment");
   const paymentOrder = params.get("order");
   const paymentSessionId = params.get("session_id");
+  const [paymentVerification, setPaymentVerification] = useState({
+    state: "idle",
+    message: "",
+  });
 
   useEffect(() => {
-    if (paymentStatus === "success") {
-      dispatch(clearCart());
-    }
-  }, [dispatch, paymentStatus]);
-
-  useEffect(() => {
-    if (
-      paymentStatus !== "success" ||
-      !canUseCommerceApi()
-    ) {
+    if (paymentStatus !== "success") {
+      setPaymentVerification({
+        state: paymentStatus === "cancelled" ? "cancelled" : "idle",
+        message:
+          paymentStatus === "cancelled"
+            ? `Checkout was cancelled${paymentOrder ? ` for order ${paymentOrder}` : ""}.`
+            : "",
+      });
       return;
     }
 
     let active = true;
 
     if (!paymentOrder || !paymentSessionId) {
-      clearRemoteCart()
-        .then((cart) => {
-          if (active) dispatch(setCartItems(cart.items));
-          if (active) notifySuccess("Payment received. You can view your product in the Recent tab.");
-        })
-        .catch(() => {
-          if (active) dispatch(clearCart());
-        });
-
+      setPaymentVerification({
+        state: "failed",
+        message:
+          "Stripe returned without verification details. Please check your Recent tab before trying again.",
+      });
+      notifyError("Payment could not be verified automatically.");
       return () => {
         active = false;
       };
     }
+
+    if (!canUseCommerceApi()) {
+      setPaymentVerification({
+        state: "failed",
+        message:
+          "Sign in again to verify this payment and view the order in your Recent tab.",
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    setPaymentVerification({
+      state: "verifying",
+      message: `Verifying payment${paymentOrder ? ` for order ${paymentOrder}` : ""}...`,
+    });
 
     syncStripeCheckoutSession({
       orderId: paymentOrder,
@@ -388,17 +402,37 @@ export default function ShopPage() {
     })
       .then((result) => {
         if (!active) return;
-        dispatch(setCartItems(result.cart.items));
-        notifySuccess("Payment received. You can view your product in the Recent tab.");
-      })
-      .catch(() => {
-        clearRemoteCart()
-          .then((cart) => {
-            if (active) dispatch(setCartItems(cart.items));
-          })
-          .catch(() => {
-            if (active) dispatch(clearCart());
+        if (
+          result.order?.paymentStatus === "SUCCEEDED" ||
+          result.paymentStatus === "paid"
+        ) {
+          dispatch(clearCart());
+          dispatch(setCartItems(result.cart.items));
+          setPaymentVerification({
+            state: "verified",
+            message: `Payment verified${paymentOrder ? ` for order ${paymentOrder}` : ""}.`,
           });
+          notifySuccess(
+            "Payment verified. You can view your product in the Recent tab."
+          );
+          return;
+        }
+
+        setPaymentVerification({
+          state: "pending",
+          message:
+            "Stripe checkout returned, but payment is still pending. Please check your Recent tab shortly.",
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setPaymentVerification({
+          state: "failed",
+          message:
+            error?.response?.data?.message ||
+            "Payment could not be verified yet. Please check your Recent tab before trying again.",
+        });
+        notifyError("Payment verification failed. Please check your Recent tab.");
       });
 
     return () => {
@@ -1107,17 +1141,19 @@ export default function ShopPage() {
             </div>
           )}
 
-          {paymentStatus && (
+          {paymentStatus && paymentVerification.state !== "idle" && (
             <div
               className={`mb-4 rounded-lg border px-4 py-3 text-sm font-medium ${
-                paymentStatus === "success"
+                paymentVerification.state === "verified"
                   ? "border-green-100 bg-green-50 text-green-700"
-                  : "border-amber-100 bg-amber-50 text-amber-700"
+                  : paymentVerification.state === "failed"
+                    ? "border-red-100 bg-red-50 text-red-700"
+                    : paymentVerification.state === "verifying"
+                      ? "border-blue-100 bg-blue-50 text-blue-700"
+                      : "border-amber-100 bg-amber-50 text-amber-700"
               }`}
             >
-              {paymentStatus === "success"
-                ? `Payment received${paymentOrder ? ` for order ${paymentOrder}` : ""}.`
-                : `Checkout was cancelled${paymentOrder ? ` for order ${paymentOrder}` : ""}.`}
+              {paymentVerification.message}
             </div>
           )}
 

@@ -227,6 +227,11 @@ CLIENT_ORIGIN="https://YOUR-FRONTEND-SITE.netlify.app"
 STRIPE_SECRET_KEY="sk_live_or_test_..."
 STRIPE_WEBHOOK_SECRET="whsec_..."
 STRIPE_CURRENCY="pkr"
+INFLOWAPM_API_KEY="server-side-project-key"
+INFLOWAPM_ENDPOINT="https://YOUR-INFLOWAPM-API-HOST"
+INFLOWAPM_SERVICE="autocore-api"
+INFLOWAPM_ENVIRONMENT="production"
+INFLOWAPM_ENABLED=true
 ```
 
 Optional Netlify environment variables:
@@ -284,7 +289,8 @@ Netlify Functions are serverless, so the normal Express `app.listen` process and
 - Valid checkout details are saved to the customer's default address record and returned in `/api/v1/auth/me`.
 - Later checkouts show the saved details first. The customer can continue with them or edit them before creating the next order.
 - Invalid checkout fields show inline messages beside the affected inputs.
-- After an order is created or a Stripe payment returns successfully, the frontend shows a toast telling the customer the order/product can be viewed in the Recent tab.
+- After Stripe redirects back to `/shop`, the frontend verifies the Checkout Session with the backend before showing a successful payment message. The URL query string alone is not treated as proof of payment.
+- After the backend verifies a successful Stripe payment, the frontend shows a toast telling the customer the order/product can be viewed in the Recent tab.
 
 ## Admin Fulfillment Flow
 
@@ -318,6 +324,34 @@ https://YOUR-BACKEND-SITE.netlify.app/api/v1/commerce/stripe/webhook
 ```
 
 Stripe secrets stay server-only. Do not expose `STRIPE_SECRET_KEY` or `STRIPE_WEBHOOK_SECRET` as `VITE_` frontend variables.
+
+For the current portfolio deployment, the production Stripe webhook URL should be:
+
+```txt
+https://autocore-api.netlify.app/api/v1/commerce/stripe/webhook
+```
+
+Configure the Stripe Dashboard webhook to send at least:
+
+```txt
+checkout.session.completed
+checkout.session.async_payment_succeeded
+checkout.session.async_payment_failed
+checkout.session.expired
+```
+
+The backend Netlify site must use the matching webhook signing secret in `STRIPE_WEBHOOK_SECRET`. The frontend site must use:
+
+```env
+VITE_API_BASE_URL="https://autocore-api.netlify.app/api/v1"
+```
+
+The backend site must use:
+
+```env
+CLIENT_URL="https://autocorestore.netlify.app"
+CLIENT_ORIGIN="https://autocorestore.netlify.app"
+```
 
 ## CI/CD
 
