@@ -56,6 +56,27 @@ const main = async () => {
     "Expected /api/v1/health body to contain status ok."
   );
 
+  const registerPreflight = await invoke({
+    httpMethod: "OPTIONS",
+    path: "/api/v1/auth/register",
+    headers: {
+      origin: "https://autocorestore.netlify.app",
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "content-type,authorization",
+    },
+    body: null,
+  });
+
+  assert(
+    registerPreflight.statusCode === 204,
+    "Expected /api/v1/auth/register preflight to return 204."
+  );
+  assert(
+    registerPreflight.headers?.["access-control-allow-origin"] ===
+      "https://autocorestore.netlify.app",
+    "Expected production storefront origin to be allowed for register preflight."
+  );
+
   const directFunctionPath = await invoke({
     httpMethod: "GET",
     path: "/.netlify/functions/api/v1/health",
