@@ -29,7 +29,7 @@
   included_files = ["prisma/**"]
 
 [functions."delivery-confirmations"]
-  schedule = "*/10 * * * *"
+  schedule = "0 * * * *"
 
 [[redirects]]
   from = "/api/*"

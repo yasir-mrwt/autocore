@@ -75,6 +75,17 @@ app.post(
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.use("/api/v1/catalog", (req, res, next) => {
+  if (req.method === "GET" && !req.path.startsWith("/admin")) {
+    res.set(
+      "Cache-Control",
+      "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+    );
+  }
+
+  next();
+});
+
 // Routes
 app.use("/api/v1", require("./src/api"));
 
