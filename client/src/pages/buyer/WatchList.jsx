@@ -71,6 +71,8 @@ const getOrderStatusLabel = (status) => {
   return labels[status] || String(status || "").replaceAll("_", " ");
 };
 
+const ORDER_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+
 const WatchList = () => {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.app?.user);
@@ -111,11 +113,19 @@ const WatchList = () => {
 
     let active = true;
     loadOrders(active);
-    const intervalId = window.setInterval(() => loadOrders(active), 30000);
+    const refreshVisibleOrders = () => {
+      if (!document.hidden) loadOrders(active);
+    };
+    const intervalId = window.setInterval(
+      refreshVisibleOrders,
+      ORDER_REFRESH_INTERVAL_MS
+    );
+    document.addEventListener("visibilitychange", refreshVisibleOrders);
 
     return () => {
       active = false;
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshVisibleOrders);
     };
   }, []);
 

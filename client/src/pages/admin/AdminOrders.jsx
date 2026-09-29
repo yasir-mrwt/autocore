@@ -109,6 +109,8 @@ const getNextActionText = (order) => {
   return formatStatus(order.status);
 };
 
+const ORDER_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+
 const AdminOrders = ({
   title = "Orders",
   statusFilter = null,
@@ -182,8 +184,19 @@ const AdminOrders = ({
   useEffect(() => {
     document.title = `AutoCore Admin ${title}`;
     loadOrders();
-    const interval = window.setInterval(() => loadOrders(true), 30000);
-    return () => window.clearInterval(interval);
+    const refreshVisibleOrders = () => {
+      if (!document.hidden) loadOrders(true);
+    };
+    const interval = window.setInterval(
+      refreshVisibleOrders,
+      ORDER_REFRESH_INTERVAL_MS
+    );
+    document.addEventListener("visibilitychange", refreshVisibleOrders);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisibleOrders);
+    };
   }, [loadOrders, title]);
 
   const updateDraft = (orderNumber, field, value) => {
