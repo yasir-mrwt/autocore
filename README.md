@@ -265,7 +265,24 @@ Run production migrations against the managed PostgreSQL database before or duri
 npm --prefix server run prisma:deploy
 ```
 
-Netlify Functions are serverless, so the normal Express `app.listen` process and in-process delivery interval do not run there. The Netlify deployment includes a scheduled `delivery-confirmations` function that calls the same `sendDueDeliveryConfirmations` worker every 10 minutes.
+Netlify Functions are serverless, so the normal Express `app.listen` process and in-process delivery interval do not run there. The Netlify deployment includes a scheduled `delivery-confirmations` function that calls the same `sendDueDeliveryConfirmations` worker hourly.
+
+## Supabase Keep Alive
+
+Supabase keep-alive is handled by GitHub Actions, not Netlify. The workflow at `.github/workflows/supabase-keepalive.yml` runs once per day and makes one direct Supabase REST request:
+
+```txt
+GET /rest/v1/products?select=id&status=eq.ACTIVE&limit=1
+```
+
+Required GitHub repository secrets:
+
+```env
+SUPABASE_URL="https://YOUR-PROJECT.supabase.co"
+SUPABASE_ANON_KEY="your-publishable-anon-key"
+```
+
+Do not point this keep-alive at the Netlify API, a Netlify Function, or any application endpoint. The anon key must be allowed to perform this minimal read on the `products` table, or an equivalent low-cost public read should be substituted.
 
 ## Main API Areas
 

@@ -1,0 +1,49 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # One tiny direct Supabase REST read per day. This does not touch Netlify.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: true
+
+jobs:
+  keepalive:
+    name: Direct Supabase Keep Alive
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Read one active product directly from Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SUPABASE_URL}" || -z "${SUPABASE_ANON_KEY}" ]]; then
+            echo "::error::Configure SUPABASE_URL and SUPABASE_ANON_KEY repository secrets."
+            exit 1
+          fi
+
+          supabase_base="${SUPABASE_URL%/}"
+
+          curl --fail --silent --show-error --max-time 20 \
+            --get "${supabase_base}/rest/v1/products" \
+            --data-urlencode "select=id" \
+            --data-urlencode "status=eq.ACTIVE" \
+            --data-urlencode "limit=1" \
+            --header "apikey: ${SUPABASE_ANON_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            --header "Accept: application/json" \
+            --header "User-Agent: AutoCore-Supabase-KeepAlive/1.0" \
+            --output /tmp/supabase-keepalive.json
+
+          test -s /tmp/supabase-keepalive.json

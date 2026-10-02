@@ -232,7 +232,7 @@ API: POST /api/v1/commerce/delivery-confirmation/confirm
 
 Scheduler note: the API process checks due shipped orders every 10 minutes after startup. For manual QA, use a near delivery date/time or call the same controller from a temporary script in a test environment.
 
-Netlify scheduler note: production Netlify deploys use the scheduled `delivery-confirmations` Function every 10 minutes. The normal Express interval is only for long-running server/Docker deployments.
+Netlify scheduler note: production Netlify deploys use the scheduled `delivery-confirmations` Function hourly. The normal Express interval is only for long-running server/Docker deployments.
 
 ## 8. Auth And Session Checks
 
